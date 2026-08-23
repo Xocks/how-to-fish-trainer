@@ -14,7 +14,7 @@ class InfiniteJumpCheat(CheatFeature):
     def __init__(self, pm, mono, patcher, hotkey: str = "F3"):
         super().__init__(
             name="Infinite Air Jump",
-            description="Allows jumping in mid-air infinitely (InGodMode is NOT used; health unaffected).",
+            description="Allows jumping in mid-air infinitely.",
             hotkey=hotkey,
             pm=pm,
             mono=mono,

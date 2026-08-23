@@ -13,7 +13,7 @@ class LockHealthCheat(CheatFeature):
     def __init__(self, pm, mono, patcher, hotkey: str = "F1"):
         super().__init__(
             name="Lock Health",
-            description="Blocks all damage and dissipates fire/poison gauges (normal jump physics preserved).",
+            description="Blocks all damage and dissipates fire/poison gauges.",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
