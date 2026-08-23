@@ -1,0 +1,20 @@
+[project]
+name = "howtofish-pycheat"
+version = "0.1.0"
+description = "Game memory manipulation and trainer framework powered by Pymem"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "dnfile>=0.18.0",
+    "keyboard>=0.13.5",
+    "pymem>=1.14.0",
+    "pythonnet>=3.1.0",
+    "rich>=15.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/howtofish_cheat"]
