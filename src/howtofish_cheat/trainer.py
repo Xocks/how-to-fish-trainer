@@ -16,6 +16,8 @@ from .features.base import CheatFeature
 from .features.health import LockHealthCheat
 from .features.hunger import LockHungerCheat
 from .features.jump import InfiniteJumpCheat
+from .features.ammo import UnlimitedAmmoCheat
+from .features.damage import DamageMultiplierCheat
 from .mono.bridge import MonoBridge
 from .mono.patcher import MethodPatcher
 from .ui.console import TrainerUI
@@ -59,7 +61,7 @@ class HowToFishTrainer:
             self.mono = MonoBridge(self.pm)
             self._setup_features()
             self._setup_hotkeys()
-            self.status_message = "Successfully attached! Ready. Press F1 / F2 / F3."
+            self.status_message = "Successfully attached! Ready. Press F1 / F2 / F3 / F4 / F5."
             return True
         except pymem.exception.ProcessNotFound:
             self.pm = None
@@ -75,12 +77,16 @@ class HowToFishTrainer:
         health_cheat = LockHealthCheat(self.pm, self.mono, self.patcher, hotkey="F1")
         hunger_cheat = LockHungerCheat(self.pm, self.mono, self.patcher, hotkey="F2")
         jump_cheat = InfiniteJumpCheat(self.pm, self.mono, self.patcher, hotkey="F3")
+        ammo_cheat = UnlimitedAmmoCheat(self.pm, self.mono, self.patcher, hotkey="F4")
+        damage_cheat = DamageMultiplierCheat(self.pm, self.mono, self.patcher, hotkey="F5")
 
         health_cheat.prepare()
         hunger_cheat.prepare()
         jump_cheat.prepare()
+        ammo_cheat.prepare()
+        damage_cheat.prepare()
 
-        self.features = [health_cheat, hunger_cheat, jump_cheat]
+        self.features = [health_cheat, hunger_cheat, jump_cheat, ammo_cheat, damage_cheat]
 
     def _setup_hotkeys(self) -> None:
         """Registers global hotkeys using keyboard hook."""
@@ -109,8 +115,13 @@ class HowToFishTrainer:
         if not self.pm or not self.mono:
             return
         feature.toggle()
-        state = "ENABLED" if feature.is_enabled else "DISABLED"
-        self.status_message = f"{feature.name} is now [{state}]"
+        if hasattr(feature, "current_mode_index") and hasattr(feature, "MODES"):
+            mode_name = feature.MODES[feature.current_mode_index]
+            self.status_message = f"{feature.name} set to [{mode_name}]"
+        else:
+            state = "ENABLED" if feature.is_enabled else "DISABLED"
+            self.status_message = f"{feature.name} is now [{state}]"
+
 
     def _cleanup(self) -> None:
         """Restores all memory patches and frees handles."""

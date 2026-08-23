@@ -79,10 +79,11 @@ class MethodPatcher:
                 return
             self.patches[patch_id] = MemoryPatch(self.pm, address, b"\xC3", original_bytes=orig, name=patch_id)
 
-    def register_custom(self, patch_id: str, address: int, patch_bytes: bytes) -> None:
-        """Caches original bytes for a custom byte patch."""
+    def register_custom(self, patch_id: str, address: int, patch_bytes: bytes, min_backup_len: int = 32) -> None:
+        """Caches original bytes for a custom byte patch with safe backup length."""
         if patch_id not in self.patches:
-            orig = self.pm.read_bytes(address, len(patch_bytes))
+            backup_len = max(len(patch_bytes), min_backup_len)
+            orig = self.pm.read_bytes(address, backup_len)
             self.patches[patch_id] = MemoryPatch(self.pm, address, patch_bytes, original_bytes=orig, name=patch_id)
 
     def patch_ret(self, patch_id: str, address: int) -> MemoryPatch:
@@ -101,9 +102,11 @@ class MethodPatcher:
         """Patches function with arbitrary machine code bytes."""
         if patch_id in self.patches:
             patch = self.patches[patch_id]
+            if not patch.is_applied and len(patch.original_bytes) < len(patch_bytes):
+                patch.original_bytes = self.pm.read_bytes(address, max(len(patch_bytes), 32))
             patch.patch_bytes = patch_bytes
         else:
-            orig = self.pm.read_bytes(address, len(patch_bytes))
+            orig = self.pm.read_bytes(address, max(len(patch_bytes), 32))
             patch = MemoryPatch(self.pm, address, patch_bytes, original_bytes=orig, name=patch_id)
             self.patches[patch_id] = patch
         patch.apply()

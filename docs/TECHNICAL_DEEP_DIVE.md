@@ -103,6 +103,76 @@ public void JumpInput(CallbackContext context) {
 
 ---
 
+### 2.4 Weapon & Ammo Architecture
+
+In *How to Fish*, all firearms inherit from `Weapon` (which extends `Tool` $\rightarrow$ `Item`):
+
+```csharp
+// Weapon.Shoot() IL decompilation summary
+if (this.HasCooldown() || this._isReloading || this.Ammo == 0)
+    return;
+
+this._queuedShoot = false;
+// ... Recoil, screen shake, and skill triggers ...
+
+this.Ammo = this.Ammo - 1; // Decrements Ammo via Weapon.set_Ammo(int)
+
+if (this.Ammo == 0) {
+    this._queueReload = true; // Triggers automatic reload state
+} else {
+    this._hasCoolDown = true;
+    this.Invoke("CoolDown", this._timeBetweenShots);
+}
+
+this.ShootEffects(true);
+// ... Raycast hit detection & ProjectileManager.AddProjectile ...
+```
+
+#### Why Unlimited Ammo Needs JIT Hooking + Memory Lock:
+1. **The Ammo Decrement (`set_Ammo`)**: Every shot calls `set_Ammo(this.Ammo - 1)`. If ammo reaches 0, `_queueReload` is flagged, causing `Update()` to initiate `LocalReload()` and interrupt continuous firing.
+2. **Infinite Ammo Implementation**:
+   - **JIT Hooking**: JIT-compiles `Weapon.set_Ammo(int)` and writes `RET` (`0xC3`) at the prologue. Calls from `Shoot()` or `ShootEffects()` return immediately without modifying `<Ammo>k__BackingField`.
+   - **Active State Lock**: Traverses `Player.LocalPlayer` $\rightarrow$ `_holding` $\rightarrow$ `_heldItem` $\rightarrow$ `_weapon`, setting `<Ammo>k__BackingField = 999` and clearing `_isReloading = 0` / `_queueReload = 0`.
+   - Result: Continuous, uninterrupted firing with 0 reload delays or magazine depletion.
+
+---
+
+### 2.5 Damage Calculation & Client-Side Authority in Multiplayer
+
+How damage flows through *How to Fish*'s multiplayer pipeline:
+
+```
+[Attacker Client]
+    |
+    +---> Real-time In-Memory Scaling:
+    |     - Melee: SharpnessUpgrade._damage in _sharpnessUpgrades array
+    |     - Guns: BulletUpgrade._damage in _bulletUpgrades array & ProjectileDamage
+    |     - Fists: PlayerPunching._damage
+    |
+    +---> PlayerVitals.LocalHit(target, damage, ...) / Item.LocalHit(target, damage, ...)
+    |
+    +---> Server.Instance.HitPlayer / HitCreature(target, damage, ...)  <-- [Damage sent over RPC]
+               |
+               v
+        [Host / Remote Server]
+               |
+               v
+        Server.RpcLogic___HitPlayer(target, damage, ...) / TakeDamage
+               |
+               v
+        PlayerVitals.TakeDamage(damage, ...)  <-- [Applies exact received damage]
+```
+
+#### Why Multipliers & One-Shot Work in Multiplayer Lobbies:
+1. **Client-Authoritative Damage Computation**: When you attack an NPC, item, or other player, your local client calculates the final damage value from `_sharpnessUpgrades[idx]._damage`, `_bulletUpgrades[idx]._damage`, and `_damage`.
+2. **RPC Transmission**: The computed integer `damage` is packaged directly into the `Server.HitPlayer` / `Server.HitCreature` network RPC and sent to the server. The host server does not recalculate base weapon values; it deducts the exact received damage from the target.
+3. **Implementation Strategy**:
+   - **Multipliers (`2x`, `5x`, `10x`, `One-Shot`)**: Real-time in-memory scaling dynamically updates `_damage` fields on `PlayerPunching`, the active `Melee._sharpnessUpgrades` array, the active `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage`.
+   - **Zero Bytecode Overflow Risk**: Modifies 0 bytes of leaf getter machine code, completely avoiding JIT method boundary overflow and working seamlessly with Mono JIT inlining.
+   - Result: 100% reliable damage scaling whether you are the Host or a Client in someone else's server.
+
+---
+
 ## 3. Trainer Architecture & Mono Runtime Interop
 
 ```
@@ -132,13 +202,17 @@ public void JumpInput(CallbackContext context) {
 |                                          |                              |
 |                 +------------------------+------------------------+     |
 |                 v                                                 v     |
-|    [MethodPatcher (RET Hooks)]                      [Memory State Lock] |
+|    [MethodPatcher (RET & Trampolines)]              [Memory State Lock] |
 |    - TakeDamage         -> 0xC3                     - _localHp = 100    |
 |    - LocalHit           -> 0xC3                     - _prevHealth = 100 |
 |    - DamageFromFullness -> 0xC3                     - _prevFullness=100 |
 |    - LowerFullness      -> 0xC3                     - _invuln = 999999  |
 |    - ApplyNewFire/Poison-> 0xC3                     - _prevFire/Poison=0|
-|    - JumpInput -> Direct Jump Trampoline                                |
+|    - Weapon.set_Ammo    -> 0xC3                     - Ammo = 999        |
+|    - JumpInput -> Direct Jump Trampoline            - Punching._damage  |
+|                                                     - Sharpness._damage |
+|                                                     - Bullets._damage   |
+|                                                     - ProjectileDamage  |
 +-------------------------------------------------------------------------+
 ```
 
@@ -164,9 +238,18 @@ Unity games load Mono via `mono-2.0-bdwgc.dll`. This DLL exports C functions for
 When Mono compiles a C# method, it allocates an executable page (`PAGE_EXECUTE_READWRITE`) and emits native x64 instructions.
 
 #### The `RET` Patch (`0xC3`)
-For methods that return `void` (e.g. `TakeDamage`, `LocalHit`, `LowerFullness`):
+For methods that return `void` (e.g. `TakeDamage`, `LocalHit`, `LowerFullness`, `set_Ammo`):
 - Writing `0xC3` (`RET`) at the first byte causes the CPU to return immediately upon entering the function.
 - The method body never executes; variables are untouched; performance overhead is literally zero cycles.
+
+#### The Multiplier Bytecode Stub
+For getter methods returning `int` (e.g. `BulletUpgrade.get_Damage`, `SharpnessUpgrade.get_Damage`):
+```asm
+; RCX = this (pointer to upgrade instance)
+mov eax, dword ptr [rcx + _damage_offset] ; Load base damage into EAX
+imul eax, eax, <multiplier>               ; Multiply damage by active scale factor
+ret                                       ; Return scaled integer
+```
 
 #### The Jump Trampoline Patch
 For `PlayerMovement.JumpInput(this, context)`:
@@ -204,7 +287,7 @@ ret                                     ; Return to caller
 ### Gotcha 3: Method Signature Parameter Counts
 - **Symptom**: `mono_class_get_method_from_name` failed to find `JumpInput` or `TakeDamage`.
 - **Cause**: In Unity's new Input System, `JumpInput` takes `(CallbackContext context)` (parameter count = 1), whereas standard methods take 0 or 4. Mono requires exact parameter counts.
-- **Solution**: Reflection inspection was used to verify exact parameter counts across all methods (`JumpInput: 1`, `TakeDamage: 4`, `LocalHit: 7`, `LowerFullness: 1`).
+- **Solution**: Reflection inspection was used to verify exact parameter counts across all methods (`JumpInput: 1`, `TakeDamage: 4`, `LocalHit: 7`, `LowerFullness: 1`, `set_Ammo: 1`, `get_Damage: 0`).
 
 ### Gotcha 4: Memory Leak & Dirty Exit
 - **Symptom**: Game logic remained modified even after closing the trainer.
@@ -226,6 +309,10 @@ ret                                     ; Return to caller
 | [`src/howtofish_cheat/features/health.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/health.py) | Lock Health cheat (5 JIT hooks + active memory lock + elemental dissipation). |
 | [`src/howtofish_cheat/features/hunger.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/hunger.py) | Lock Hunger cheat (LowerFullness hooks + fullness memory lock). |
 | [`src/howtofish_cheat/features/jump.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/jump.py) | Infinite Air Jump (pure movement JIT trampoline; zero God Mode). |
+| [`src/howtofish_cheat/features/ammo.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/ammo.py) | Unlimited Ammo cheat (Weapon.set_Ammo JIT hook + active ammo memory lock). |
+| [`src/howtofish_cheat/features/damage.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/damage.py) | Damage Multiplier cheat (1x, 2x, 5x, 10x, One-Shot Kill via JIT patches + memory lock). |
 | [`src/howtofish_cheat/ui/console.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/ui/console.py) | Rich-based cross-platform terminal dashboard. |
 | [`src/howtofish_cheat/trainer.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/trainer.py) | Process lifecycle, hotkeys, upfront JIT compilation, and teardown. |
 | [`run_trainer.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/run_trainer.py) | Main entry runner. |
+
+

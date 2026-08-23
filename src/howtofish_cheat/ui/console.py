@@ -48,7 +48,10 @@ class TrainerUI:
         table.add_column("Description", style="dim")
 
         for f in features:
-            status_badge = "[bold green]ACTIVE[/bold green]" if f.is_enabled else "[dim red]DISABLED[/dim red]"
+            if hasattr(f, "get_status_badge"):
+                status_badge = f.get_status_badge()
+            else:
+                status_badge = "[bold green]ACTIVE[/bold green]" if f.is_enabled else "[dim red]DISABLED[/dim red]"
             table.add_row(f.hotkey, f.name, status_badge, f.description)
 
         # Controls & Footer
