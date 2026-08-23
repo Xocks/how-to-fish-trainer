@@ -173,6 +173,38 @@ How damage flows through *How to Fish*'s multiplayer pipeline:
 
 ---
 
+### 2.6 Money System & Network Synchronization
+
+In *How to Fish*, currency is managed globally by `MoneyManager` and displayed via `PlayerUI` / `MoneyUI`:
+
+```csharp
+public class MoneyManager : NetworkBehaviour {
+    public static MoneyManager Instance;
+    public readonly SyncVar<int> _money = new SyncVar<int>();
+    public static int Money { get; private set; } // <Money>k__BackingField
+
+    public static void AddMoney(int amount, Player player) {
+        if ((bool)Instance && Instance.IsServerInitialized) {
+            Instance._money.Value += Mathf.Abs(amount);
+            Instance.ObserverMoneySound(increase: true, player);
+            Instance.MoneySound(increase: true, player);
+        }
+    }
+}
+```
+
+#### Dual State & UI Pipeline:
+1. **Authoritative Field (`<Money>k__BackingField`)**:
+   - `MoneyManager.Money` is read by `Purchasable.Hover()`, `ItemPurchasable.Interact()`, `Server.BuyItem()`, etc., using `MoneyManager.CanAfford(cost)`.
+2. **FishNet `SyncVar<int>` (`_money`)**:
+   - Holds the networked synchronizer (`FishNet.Object.Synchronizing.SyncVar<int>`), storing the active value at internal offsets `+0x6C` and `+0x70`.
+3. **Floating Text & Count-Up Animation (`PlayerUI.SetMoney`)**:
+   - `PlayerUI.SetMoney(int to, int diff, bool gainedMoney)` spawns a dynamic green/red floating TextMeshPro element with LeanTween upward movement and smoothly interpolates the HUD balance string `$xxxx`.
+4. **Implementation Strategy (`F6`)**:
+   - On keypress, reads `<Money>k__BackingField`, adds `10,000` (clamped to `2,000,000,000`), writes both the static field and `SyncVar` offsets, triggers `PlayerUI.SetMoney`, and calls `MoneyManager.MoneySound` for the native sell audio clip.
+
+---
+
 ## 3. Trainer Architecture & Mono Runtime Interop
 
 ```
@@ -311,6 +343,7 @@ ret                                     ; Return to caller
 | [`src/howtofish_cheat/features/jump.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/jump.py) | Infinite Air Jump (pure movement JIT trampoline; zero God Mode). |
 | [`src/howtofish_cheat/features/ammo.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/ammo.py) | Unlimited Ammo cheat (Weapon.set_Ammo JIT hook + active ammo memory lock). |
 | [`src/howtofish_cheat/features/damage.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/damage.py) | Damage Multiplier cheat (1x, 2x, 5x, 10x, One-Shot Kill via JIT patches + memory lock). |
+| [`src/howtofish_cheat/features/money.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/features/money.py) | Add Money cheat (+1w / +$10,000 on press with sound, UI float text, and SyncVar synchronization). |
 | [`src/howtofish_cheat/ui/console.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/ui/console.py) | Rich-based cross-platform terminal dashboard. |
 | [`src/howtofish_cheat/trainer.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/src/howtofish_cheat/trainer.py) | Process lifecycle, hotkeys, upfront JIT compilation, and teardown. |
 | [`run_trainer.py`](file:///c:/Users/Huan%20Wang/workspace/howtofish-pycheat/run_trainer.py) | Main entry runner. |

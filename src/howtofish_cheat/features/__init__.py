@@ -6,6 +6,7 @@ from .hunger import LockHungerCheat
 from .jump import InfiniteJumpCheat
 from .ammo import UnlimitedAmmoCheat
 from .damage import DamageMultiplierCheat
+from .money import AddMoneyCheat
 
 __all__ = [
     "CheatFeature",
@@ -14,6 +15,7 @@ __all__ = [
     "InfiniteJumpCheat",
     "UnlimitedAmmoCheat",
     "DamageMultiplierCheat",
+    "AddMoneyCheat",
 ]
 
 

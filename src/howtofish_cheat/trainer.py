@@ -18,6 +18,7 @@ from .features.hunger import LockHungerCheat
 from .features.jump import InfiniteJumpCheat
 from .features.ammo import UnlimitedAmmoCheat
 from .features.damage import DamageMultiplierCheat
+from .features.money import AddMoneyCheat
 from .mono.bridge import MonoBridge
 from .mono.patcher import MethodPatcher
 from .ui.console import TrainerUI
@@ -61,7 +62,7 @@ class HowToFishTrainer:
             self.mono = MonoBridge(self.pm)
             self._setup_features()
             self._setup_hotkeys()
-            self.status_message = "Successfully attached! Ready. Press F1 / F2 / F3 / F4 / F5."
+            self.status_message = "Successfully attached! Ready. Press F1 / F2 / F3 / F4 / F5 / F6."
             return True
         except pymem.exception.ProcessNotFound:
             self.pm = None
@@ -79,14 +80,16 @@ class HowToFishTrainer:
         jump_cheat = InfiniteJumpCheat(self.pm, self.mono, self.patcher, hotkey="F3")
         ammo_cheat = UnlimitedAmmoCheat(self.pm, self.mono, self.patcher, hotkey="F4")
         damage_cheat = DamageMultiplierCheat(self.pm, self.mono, self.patcher, hotkey="F5")
+        money_cheat = AddMoneyCheat(self.pm, self.mono, self.patcher, hotkey="F6")
 
         health_cheat.prepare()
         hunger_cheat.prepare()
         jump_cheat.prepare()
         ammo_cheat.prepare()
         damage_cheat.prepare()
+        money_cheat.prepare()
 
-        self.features = [health_cheat, hunger_cheat, jump_cheat, ammo_cheat, damage_cheat]
+        self.features = [health_cheat, hunger_cheat, jump_cheat, ammo_cheat, damage_cheat, money_cheat]
 
     def _setup_hotkeys(self) -> None:
         """Registers global hotkeys using keyboard hook."""
@@ -118,6 +121,8 @@ class HowToFishTrainer:
         if hasattr(feature, "current_mode_index") and hasattr(feature, "MODES"):
             mode_name = feature.MODES[feature.current_mode_index]
             self.status_message = f"{feature.name} set to [{mode_name}]"
+        elif hasattr(feature, "last_action_message") and feature.last_action_message:
+            self.status_message = feature.last_action_message
         else:
             state = "ENABLED" if feature.is_enabled else "DISABLED"
             self.status_message = f"{feature.name} is now [{state}]"
