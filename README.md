@@ -51,6 +51,9 @@ uv run python run_trainer.py
 # Or as a module with uv
 uv run python -m howtofish_cheat
 
+# Build single standalone executable (dist/HowToFishTrainer.exe)
+uv run python build.py
+
 # Run unit tests with uv
 uv run pytest -v
 ```
