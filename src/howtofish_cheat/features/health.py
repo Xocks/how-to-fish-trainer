@@ -13,7 +13,7 @@ class LockHealthCheat(CheatFeature):
     def __init__(self, pm, mono, patcher, hotkey: str = "F1"):
         super().__init__(
             name="Lock Health",
-            description="Blocks all damage and dissipates fire/poison gauges.",
+            description="Locks HP to 100, blocks all damage, and dissipates elemental gauges.",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
@@ -26,10 +26,12 @@ class LockHealthCheat(CheatFeature):
         self.vitals_offset: Optional[int] = None
         self.local_hp_offset: Optional[int] = None
         self.prev_hp_offset: Optional[int] = None
+        self.synced_hp_offset: Optional[int] = None
         self.invuln_offset: Optional[int] = None
         self.local_is_dead_offset: Optional[int] = None
         self.prev_fire_offset: Optional[int] = None
         self.prev_poison_offset: Optional[int] = None
+        self.on_health_change_native: Optional[int] = None
 
     def prepare(self) -> bool:
         """Finds and JIT compiles all damage and elemental methods, and caches memory offsets."""
@@ -54,6 +56,13 @@ class LockHealthCheat(CheatFeature):
                 except Exception as e:
                     logger.debug(f"Could not compile {mname}: {e}")
 
+            # JIT compile OnHealthChange for UI animation and networking synchronization
+            try:
+                on_hp_m = self.mono.find_method(vitals_cls, "OnHealthChange", 3)
+                self.on_health_change_native = self.mono.compile_method(on_hp_m)
+            except Exception as e:
+                logger.debug(f"Could not compile OnHealthChange: {e}")
+
             # 2. Resolve Player.LocalPlayer static address and field offsets
             try:
                 p_vtable = self.mono.executor.call(self.mono.get_export("mono_class_vtable"), self.mono.root_domain, player_cls)
@@ -64,6 +73,7 @@ class LockHealthCheat(CheatFeature):
 
                 self.local_hp_offset = self.mono.get_field_offset(vitals_cls, "_localHp")
                 self.prev_hp_offset = self.mono.get_field_offset(vitals_cls, "_prevHealth")
+                self.synced_hp_offset = self.mono.get_field_offset(vitals_cls, "_syncedHealth")
                 self.invuln_offset = self.mono.get_field_offset(vitals_cls, "_invulnerableUntil")
                 self.local_is_dead_offset = self.mono.get_field_offset(vitals_cls, "_localIsDead")
                 self.prev_fire_offset = self.mono.get_field_offset(vitals_cls, "_prevFire")
@@ -77,7 +87,7 @@ class LockHealthCheat(CheatFeature):
             return False
 
     def enable(self) -> bool:
-        """Applies JIT patches to block all damage."""
+        """Applies JIT patches to block all damage and resets health to 100 on activation."""
         try:
             if not self.method_addrs:
                 self.prepare()
@@ -85,7 +95,21 @@ class LockHealthCheat(CheatFeature):
             for mname, native_addr in self.method_addrs.items():
                 self.patcher.patch_ret(mname, native_addr)
 
-            self._maintain_health()
+            # Set health to 100 once upon activation
+            self._set_health_to_100()
+
+            # Trigger native UI refresh
+            if self.on_health_change_native and self.local_player_ptr_addr and self.vitals_offset:
+                try:
+                    lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
+                    if lp_inst:
+                        vitals_inst = self.pm.read_ulonglong(lp_inst + self.vitals_offset)
+                        if vitals_inst:
+                            # OnHealthChange(this, prev, next, asServer) -> (vitals_inst, 100, 100, 0)
+                            self.mono.executor.call(self.on_health_change_native, vitals_inst, 100, 100, 0)
+                except Exception:
+                    pass
+
             self.is_enabled = True
             return True
         except Exception as e:
@@ -105,8 +129,8 @@ class LockHealthCheat(CheatFeature):
             logger.error(f"Failed to disable Lock Health: {e}")
             return False
 
-    def _maintain_health(self) -> None:
-        """Forces HP to 100, sets invulnerability timer, and clears fire/poison elemental meters."""
+    def _set_health_to_100(self) -> None:
+        """Sets HP to 100 upon activation, initializes invulnerability timer, and clears fire/poison."""
         if not self.local_player_ptr_addr or not self.vitals_offset:
             return
         try:
@@ -122,6 +146,11 @@ class LockHealthCheat(CheatFeature):
                 self.pm.write_int(vitals_inst + self.local_hp_offset, 100)
             if self.prev_hp_offset:
                 self.pm.write_int(vitals_inst + self.prev_hp_offset, 100)
+            if self.synced_hp_offset:
+                synced_hp_ptr = self.pm.read_ulonglong(vitals_inst + self.synced_hp_offset)
+                if synced_hp_ptr:
+                    self.pm.write_int(synced_hp_ptr + 0x6C, 100)
+                    self.pm.write_int(synced_hp_ptr + 0x70, 100)
             if self.invuln_offset:
                 self.pm.write_float(vitals_inst + self.invuln_offset, 999999.0)
             if self.local_is_dead_offset:
@@ -132,6 +161,28 @@ class LockHealthCheat(CheatFeature):
                 self.pm.write_int(vitals_inst + self.prev_fire_offset, 0)
             if self.prev_poison_offset:
                 self.pm.write_int(vitals_inst + self.prev_poison_offset, 0)
+        except Exception:
+            pass
+
+    def _dissipate_elemental_status(self) -> None:
+        """Continuously dissipates fire and poison gauges during active gameplay."""
+        if not self.local_player_ptr_addr or not self.vitals_offset:
+            return
+        try:
+            lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
+            if not lp_inst:
+                return
+
+            vitals_inst = self.pm.read_ulonglong(lp_inst + self.vitals_offset)
+            if not vitals_inst:
+                return
+
+            if self.prev_fire_offset:
+                self.pm.write_int(vitals_inst + self.prev_fire_offset, 0)
+            if self.prev_poison_offset:
+                self.pm.write_int(vitals_inst + self.prev_poison_offset, 0)
+            if self.local_is_dead_offset:
+                self.pm.write_uchar(vitals_inst + self.local_is_dead_offset, 0)
         except Exception:
             pass
 
@@ -149,6 +200,6 @@ class LockHealthCheat(CheatFeature):
             pass
 
     def update(self) -> None:
-        """Maintains health and elemental dissipation every tick."""
+        """Maintains elemental status dissipation every tick without overriding network health."""
         if self.is_enabled:
-            self._maintain_health()
+            self._dissipate_elemental_status()

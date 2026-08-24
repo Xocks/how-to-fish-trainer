@@ -13,7 +13,7 @@ class LockHungerCheat(CheatFeature):
     def __init__(self, pm, mono, patcher, hotkey: str = "F2"):
         super().__init__(
             name="Lock Hunger / Infinite Fullness",
-            description="Prevents fullness meter from dropping over time or during actions.",
+            description="Locks fullness meter at 100 and prevents hunger depletion over time or actions.",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
@@ -23,6 +23,8 @@ class LockHungerCheat(CheatFeature):
         self.local_player_ptr_addr: Optional[int] = None
         self.vitals_offset: Optional[int] = None
         self.prev_fullness_offset: Optional[int] = None
+        self.synced_fullness_offset: Optional[int] = None
+        self.on_fullness_change_native: Optional[int] = None
 
     def prepare(self) -> bool:
         """Finds and JIT compiles required hunger methods and caches memory offsets."""
@@ -44,6 +46,13 @@ class LockHungerCheat(CheatFeature):
                 except Exception as e:
                     logger.debug(f"Could not compile {mname}: {e}")
 
+            # JIT compile OnFullnessChange for UI animation and networking synchronization
+            try:
+                on_fn_m = self.mono.find_method(vitals_cls, "OnFullnessChange", 3)
+                self.on_fullness_change_native = self.mono.compile_method(on_fn_m)
+            except Exception as e:
+                logger.debug(f"Could not compile OnFullnessChange: {e}")
+
             # 2. Resolve Player.LocalPlayer static address and field offsets
             try:
                 p_vtable = self.mono.executor.call(self.mono.get_export("mono_class_vtable"), self.mono.root_domain, player_cls)
@@ -52,6 +61,7 @@ class LockHungerCheat(CheatFeature):
                 self.local_player_ptr_addr = p_static + lp_offset
                 self.vitals_offset = self.mono.get_field_offset(player_cls, "_playerVitals")
                 self.prev_fullness_offset = self.mono.get_field_offset(vitals_cls, "_prevFullness")
+                self.synced_fullness_offset = self.mono.get_field_offset(vitals_cls, "_syncedFullness")
             except Exception as e:
                 logger.debug(f"Could not resolve LocalPlayer hunger offsets: {e}")
 
@@ -61,7 +71,7 @@ class LockHungerCheat(CheatFeature):
             return False
 
     def enable(self) -> bool:
-        """Applies JIT patches to hunger methods."""
+        """Applies JIT patches to hunger methods and sets fullness to 100 on activation."""
         try:
             if not self.method_addrs:
                 self.prepare()
@@ -69,7 +79,21 @@ class LockHungerCheat(CheatFeature):
             for mname, native_addr in self.method_addrs.items():
                 self.patcher.patch_ret(mname, native_addr)
 
-            self._maintain_hunger()
+            # Set fullness to 100 once upon activation
+            self._set_fullness_to_100()
+
+            # Trigger native UI refresh
+            if self.on_fullness_change_native and self.local_player_ptr_addr and self.vitals_offset:
+                try:
+                    lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
+                    if lp_inst:
+                        vitals_inst = self.pm.read_ulonglong(lp_inst + self.vitals_offset)
+                        if vitals_inst:
+                            # OnFullnessChange(this, prev, next, asServer) -> (vitals_inst, 100, 100, 0)
+                            self.mono.executor.call(self.on_fullness_change_native, vitals_inst, 100, 100, 0)
+                except Exception:
+                    pass
+
             self.is_enabled = True
             return True
         except Exception as e:
@@ -88,8 +112,8 @@ class LockHungerCheat(CheatFeature):
             logger.error(f"Failed to disable Lock Hunger: {e}")
             return False
 
-    def _maintain_hunger(self) -> None:
-        """Forces fullness meter to 100 in memory."""
+    def _set_fullness_to_100(self) -> None:
+        """Forces fullness meter to 100 in memory and SyncVar upon activation."""
         if not self.local_player_ptr_addr or not self.vitals_offset:
             return
         try:
@@ -103,10 +127,15 @@ class LockHungerCheat(CheatFeature):
 
             if self.prev_fullness_offset:
                 self.pm.write_int(vitals_inst + self.prev_fullness_offset, 100)
+
+            if self.synced_fullness_offset:
+                synced_fn_ptr = self.pm.read_ulonglong(vitals_inst + self.synced_fullness_offset)
+                if synced_fn_ptr:
+                    self.pm.write_int(synced_fn_ptr + 0x6C, 100)
+                    self.pm.write_int(synced_fn_ptr + 0x70, 100)
         except Exception:
             pass
 
     def update(self) -> None:
-        """Maintains hunger every tick."""
-        if self.is_enabled:
-            self._maintain_hunger()
+        """No-op on tick since LowerFullness methods are JIT-patched with RET."""
+        pass

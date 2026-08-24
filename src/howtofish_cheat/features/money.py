@@ -1,4 +1,4 @@
-"""Add Money (+1w / +$10,000) cheat feature with memory synchronization, UI animations, and sound effects."""
+"""Add Money (+1w / +$10,000) cheat feature (Host: Global Lobby Sync | Client: Local UI)."""
 
 import logging
 from typing import Optional
@@ -8,14 +8,14 @@ logger = logging.getLogger(__name__)
 
 
 class AddMoneyCheat(CheatFeature):
-    """Adds +$10,000 (1w) money with sound effect, UI animation, and multiplayer synchronization on keypress."""
+    """Adds +$10,000 (1w) money with sound FX, UI animation (Host: Global Sync | Client: Local UI)."""
 
     DEFAULT_ADD_AMOUNT = 10000
 
     def __init__(self, pm, mono, patcher=None, hotkey: str = "F6", add_amount: int = 10000):
         super().__init__(
             name="Add Money (+1w)",
-            description=f"Adds +${add_amount:,} (1w) money with sound effect, UI animation, and multiplayer synchronization.",
+            description=f"Adds +${add_amount:,} (1w) money with sound FX and UI (Host: Global Sync | Client: Local UI).",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
@@ -118,9 +118,13 @@ class AddMoneyCheat(CheatFeature):
            and the HUD UI do NOT update synchronously until network tick loopback completes.
 
         OUR SOLUTION:
-        - Layer 1 (Authoritative Memory): Directly write `<Money>k__BackingField` and `SyncVar<int>`
-          (offsets 0x6C/0x70) so that shop affordability checks (`MoneyManager.CanAfford`) pass 100%
-          reliably across Singleplayer, Host, AND Client modes.
+        - Layer 1 (Authoritative Memory / SyncVar):
+          * Host / Singleplayer: Modifying `<Money>k__BackingField` and `SyncVar<int>` (+0x6C/+0x70)
+            directly updates the authoritative server state, which FishNet automatically broadcasts
+            to all connected clients in the lobby.
+          * Joined Client: Modifying local memory satisfies local UI affordability checks (`CanAfford`)
+            and unlocks the [E] Buy button locally. (Note: Server-side purchase authorization `Server.BuyItem`
+            is verified against host server balance).
         - Layer 2 (Native UI & Audio): Directly invoke `PlayerUI.SetMoney` and `MoneyManager.MoneySound`
           to guarantee the exact same green floating `+$10000` text animation and cash register audio
           without any network latency or desync.
