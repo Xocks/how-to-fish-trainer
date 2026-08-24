@@ -2,7 +2,7 @@
 
 TRANSLATIONS = {
     "zh": {
-        "header_title": "[*] HOW TO FISH - 内存修改器 / 辅助工具\n",
+        "header_title": "[*] 渔力全开 (How to Fish) - 内存修改器 / 辅助工具\n",
         "header_subtitle": "Unity Mono 引擎 | FishNet 多人联机支持 | JIT 补丁框架\n",
         "attached_info": "[bold green][已连接][/bold green] [white]目标进程:[/white] [cyan]{process_name}[/cyan] (PID: {pid}) | [white]Mono 域:[/white] [yellow]0x{mono_domain:X}[/yellow]",
         "waiting_info": "[bold yellow][等待中][/bold yellow] [white]正在搜索目标进程:[/white] [cyan]{process_name}[/cyan]...",

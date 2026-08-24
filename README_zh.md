@@ -1,8 +1,8 @@
-# 我要去钓鱼 (How to Fish) - 内存修改器
+# 渔力全开 (How to Fish) - 内存修改器
 
 [English](README.md) | [简体中文](README_zh.md)
 
-专为 Unity Mono 引擎游戏 **[我要去钓鱼 (How to Fish)](https://store.steampowered.com/)** 打造的外部内存修改器与辅助工具。
+专为 Unity Mono 引擎游戏 **[渔力全开 (How to Fish)](https://store.steampowered.com/)** 打造的外部内存修改器与辅助工具。
 
 基于 `pymem` 与底层 Mono Runtime C API 互操作实现 JIT 函数 Hook / 机器码补丁，并提供 `rich` 现代化交互式终端控制面板，支持中英文双语无缝切换与免 Python 单文件 `.exe` 运行。
 
