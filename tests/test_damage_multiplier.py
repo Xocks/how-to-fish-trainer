@@ -141,6 +141,99 @@ class TestDamageMultiplier(unittest.TestCase):
         self.mock_pm.write_int.assert_any_call(0x82000 + 0x10, 45)
         self.mock_pm.write_int.assert_any_call(0x90000 + 0x14, 40)
 
+    def test_inventory_and_dropped_items_restoration_on_exit(self):
+        """Verifies that weapons moved to inventory or dropped on the ground have their base damages restored upon exit."""
+        cheat = DamageMultiplierCheat(self.mock_pm, self.mock_mono, self.mock_patcher, hotkey="F5")
+        cheat.local_player_ptr_addr = 0x10000
+        cheat.holding_offset = 0x20
+        cheat.held_item_offset = 0x30
+        cheat.item_melee_offset = 0x38
+        cheat.item_weapon_offset = 0x3C
+        cheat.punching_offset = 0x40
+        cheat.punch_damage_offset = 0x50
+
+        cheat.melee_sharpness_offset = 0x60
+        cheat.sharpness_damage_offset = 0x10
+
+        cheat.weapon_attachments_offset = 0x70
+        cheat.attachments_bullets_offset = 0x80
+        cheat.bullet_damage_offset = 0x10
+
+        cheat.weapon_info_offset = 0x90
+        cheat.proj_damage_offset = 0x14
+
+        # Scenario: Player equips firearm (Item A) first
+        current_held_item = [0x50000]  # Item A (Firearm)
+
+        def mock_read_ulonglong(addr):
+            mapping = {
+                0x10000: 0x20000,  # local_player
+                0x20000 + 0x40: 0x30000,  # punching
+                0x20000 + 0x20: 0x40000,  # holding
+                0x40000 + 0x30: current_held_item[0],  # held_item (dynamic)
+                # Item A (Firearm)
+                0x50000 + 0x38: 0,  # no melee
+                0x50000 + 0x3C: 0x52000,  # weapon component
+                0x52000 + 0x70: 0x70000,  # attachments
+                0x70000 + 0x80: 0x80000,  # bullets_arr
+                0x80000 + 0x20: 0x81000,  # bullet elem 0
+                0x80000 + 0x28: 0x82000,  # bullet elem 1
+                0x52000 + 0x90: 0x90000,  # weapon_info
+                # Item B (Melee Sword)
+                0x55000 + 0x38: 0x51000,  # melee component
+                0x55000 + 0x3C: 0,  # no weapon
+                0x51000 + 0x60: 0x60000,  # sharpness_arr
+                0x60000 + 0x20: 0x61000,  # sharpness elem 0
+                0x60000 + 0x28: 0x62000,  # sharpness elem 1
+            }
+            return mapping.get(addr, 0)
+
+        def mock_read_uint(addr):
+            if addr in (0x60000 + 0x18, 0x80000 + 0x18):
+                return 2
+            return 0
+
+        def mock_read_int(addr):
+            mapping = {
+                0x30000 + 0x50: 20,  # punch damage
+                0x81000 + 0x10: 30,  # firearm bullet 0
+                0x82000 + 0x10: 45,  # firearm bullet 1
+                0x90000 + 0x14: 40,  # firearm proj damage
+                0x61000 + 0x10: 25,  # sword sharpness 0
+                0x62000 + 0x10: 35,  # sword sharpness 1
+            }
+            return mapping.get(addr, 0)
+
+        self.mock_pm.read_ulonglong.side_effect = mock_read_ulonglong
+        self.mock_pm.read_uint.side_effect = mock_read_uint
+        self.mock_pm.read_int.side_effect = mock_read_int
+
+        # Step 1: Scale firearm while held with 10x multiplier
+        cheat.apply_mode(3)  # 10x
+        self.mock_pm.write_int.assert_any_call(0x81000 + 0x10, 300)
+        self.mock_pm.write_int.assert_any_call(0x82000 + 0x10, 450)
+        self.mock_pm.write_int.assert_any_call(0x90000 + 0x14, 400)
+
+        # Step 2: Player switches to sword (firearm is moved to inventory or dropped)
+        current_held_item[0] = 0x55000  # Item B (Sword)
+        cheat.update()
+        self.mock_pm.write_int.assert_any_call(0x61000 + 0x10, 250)
+        self.mock_pm.write_int.assert_any_call(0x62000 + 0x10, 350)
+
+        # Reset mock write calls to cleanly test exit restoration
+        self.mock_pm.write_int.reset_mock()
+
+        # Step 3: Disable cheat / exit trainer while sword is held
+        cheat.disable()
+
+        # Assert BOTH sword (held) AND firearm (in inventory / on ground) AND fists are restored to 1x base values
+        self.mock_pm.write_int.assert_any_call(0x30000 + 0x50, 20)  # Punch restored
+        self.mock_pm.write_int.assert_any_call(0x61000 + 0x10, 25)  # Sword sharpness 0 restored
+        self.mock_pm.write_int.assert_any_call(0x62000 + 0x10, 35)  # Sword sharpness 1 restored
+        self.mock_pm.write_int.assert_any_call(0x81000 + 0x10, 30)  # Firearm bullet 0 restored
+        self.mock_pm.write_int.assert_any_call(0x82000 + 0x10, 45)  # Firearm bullet 1 restored
+        self.mock_pm.write_int.assert_any_call(0x90000 + 0x14, 40)  # Firearm proj damage restored
+
     def test_trainer_setup_and_ui(self):
         trainer = HowToFishTrainer()
         trainer.pm = self.mock_pm
@@ -175,3 +268,4 @@ class TestDamageMultiplier(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -110,7 +110,7 @@ class DamageMultiplierCheat(CheatFeature):
 
         if self.current_mode_index == 0:
             # 1x (Normal): restore all base damage values in memory
-            self._maintain_all_damages(1)
+            self.restore_all_damages()
             self.is_enabled = False
             return
 
@@ -134,115 +134,175 @@ class DamageMultiplierCheat(CheatFeature):
         return True
 
     def disable(self) -> bool:
-        """Restores original 1x game logic."""
+        """Restores original 1x game logic across all tracked weapons, inventory items, and dropped items."""
         self.apply_mode(0)
         return True
 
+    def restore_all_damages(self) -> None:
+        """Restores all cached base damage values across fists, melee weapons, firearms, inventory items, and dropped items in memory."""
+        # 1. Restore punch damage (PlayerPunching._damage)
+        if self.punching_offset and self.punch_damage_offset and self._base_punch_damage is not None:
+            try:
+                if self.local_player_ptr_addr:
+                    lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
+                    if lp_inst:
+                        punching_inst = self.pm.read_ulonglong(lp_inst + self.punching_offset)
+                        if punching_inst:
+                            self.pm.write_int(punching_inst + self.punch_damage_offset, self._base_punch_damage)
+            except Exception:
+                pass
+
+        # 2. Restore all tracked melee sharpness upgrades (held, in inventory, or dropped)
+        if self.sharpness_damage_offset:
+            for elem_ptr, base_val in list(self._base_sharpness_damages.items()):
+                try:
+                    self.pm.write_int(elem_ptr + self.sharpness_damage_offset, base_val)
+                except Exception:
+                    pass
+
+        # 3. Restore all tracked bullet upgrades (held, in inventory, or dropped)
+        if self.bullet_damage_offset:
+            for elem_ptr, base_val in list(self._base_bullet_damages.items()):
+                try:
+                    self.pm.write_int(elem_ptr + self.bullet_damage_offset, base_val)
+                except Exception:
+                    pass
+
+        # 4. Restore all tracked firearm projectile damages (held, in inventory, or dropped)
+        if self.proj_damage_offset:
+            for winfo_ptr, base_val in list(self._base_proj_damages.items()):
+                try:
+                    self.pm.write_int(winfo_ptr + self.proj_damage_offset, base_val)
+                except Exception:
+                    pass
+
     def _maintain_all_damages(self, multiplier: int) -> None:
-        """Scales fists, held melee weapon upgrades, held firearm bullet upgrades, and projectile damage in memory."""
-        if not self.local_player_ptr_addr:
+        """Scales fists, held melee weapon upgrades, held firearm bullet upgrades, and projectile damage in memory.
+
+        Maintains real-time scaling across all tracked weapons (currently held, stored in inventory,
+        or dropped on the ground) to guarantee seamless weapon switching and clean restoration.
+        """
+        if multiplier == 1:
+            self.restore_all_damages()
             return
 
-        try:
-            lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
-            if not lp_inst:
-                return
+        punching_inst = 0
+        if self.local_player_ptr_addr:
+            try:
+                lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
+                if lp_inst:
+                    # 1. Discover punch damage (Fists)
+                    if self.punching_offset and self.punch_damage_offset:
+                        try:
+                            punching_inst = self.pm.read_ulonglong(lp_inst + self.punching_offset)
+                            if punching_inst:
+                                cur_punch_dmg = self.pm.read_int(punching_inst + self.punch_damage_offset)
+                                if self._base_punch_damage is None:
+                                    if 0 < cur_punch_dmg < 99999:
+                                        self._base_punch_damage = cur_punch_dmg
+                        except Exception:
+                            pass
 
-            # 1. Scale punch damage (Fists)
-            if self.punching_offset and self.punch_damage_offset:
-                try:
-                    punching_inst = self.pm.read_ulonglong(lp_inst + self.punching_offset)
-                    if punching_inst:
-                        cur_punch_dmg = self.pm.read_int(punching_inst + self.punch_damage_offset)
-                        if self._base_punch_damage is None or multiplier == 1:
-                            if 0 < cur_punch_dmg < 99999:
-                                self._base_punch_damage = cur_punch_dmg
+                    # 2. Discover held item components (Melee or Weapon/Gun)
+                    if self.holding_offset and self.held_item_offset:
+                        try:
+                            holding_inst = self.pm.read_ulonglong(lp_inst + self.holding_offset)
+                            if holding_inst:
+                                held_item = self.pm.read_ulonglong(holding_inst + self.held_item_offset)
+                                if held_item:
+                                    # A. Check if held_item has _melee component
+                                    melee_inst = 0
+                                    if self.item_melee_offset:
+                                        melee_inst = self.pm.read_ulonglong(held_item + self.item_melee_offset)
 
-                        base_punch = self._base_punch_damage or 20
-                        target_punch = 99999 if multiplier >= 99999 else base_punch * multiplier
-                        self.pm.write_int(punching_inst + self.punch_damage_offset, target_punch)
-                except Exception:
-                    pass
-
-            # 2. Scale held item (Melee or Weapon/Gun)
-            if self.holding_offset and self.held_item_offset:
-                try:
-                    holding_inst = self.pm.read_ulonglong(lp_inst + self.holding_offset)
-                    if holding_inst:
-                        held_item = self.pm.read_ulonglong(holding_inst + self.held_item_offset)
-                        if held_item:
-                            # A. Check if held_item has _melee component
-                            melee_inst = 0
-                            if self.item_melee_offset:
-                                melee_inst = self.pm.read_ulonglong(held_item + self.item_melee_offset)
-
-                            if melee_inst and self.melee_sharpness_offset and self.sharpness_damage_offset:
-                                try:
-                                    sharpness_arr = self.pm.read_ulonglong(melee_inst + self.melee_sharpness_offset)
-                                    if sharpness_arr:
-                                        count = self.pm.read_uint(sharpness_arr + 0x18)
-                                        if 0 < count < 20:
-                                            for i in range(count):
-                                                elem_ptr = self.pm.read_ulonglong(sharpness_arr + 0x20 + i * 8)
-                                                if elem_ptr:
-                                                    if elem_ptr not in self._base_sharpness_damages or multiplier == 1:
-                                                        raw_val = self.pm.read_int(elem_ptr + self.sharpness_damage_offset)
-                                                        if 0 < raw_val < 99999:
-                                                            self._base_sharpness_damages[elem_ptr] = raw_val
-
-                                                    base_val = self._base_sharpness_damages.get(elem_ptr, 20)
-                                                    target_val = 99999 if multiplier >= 99999 else base_val * multiplier
-                                                    self.pm.write_int(elem_ptr + self.sharpness_damage_offset, target_val)
-                                except Exception:
-                                    pass
-
-                            # B. Check if held_item has _weapon component
-                            weapon_inst = 0
-                            if self.item_weapon_offset:
-                                weapon_inst = self.pm.read_ulonglong(held_item + self.item_weapon_offset)
-
-                            if weapon_inst:
-                                if self.weapon_attachments_offset and self.bullet_damage_offset and self.attachments_bullets_offset:
-                                    try:
-                                        attachments_ptr = self.pm.read_ulonglong(weapon_inst + self.weapon_attachments_offset)
-                                        if attachments_ptr:
-                                            bullets_arr = self.pm.read_ulonglong(attachments_ptr + self.attachments_bullets_offset)
-                                            if bullets_arr:
-                                                count = self.pm.read_uint(bullets_arr + 0x18)
+                                    if melee_inst and self.melee_sharpness_offset and self.sharpness_damage_offset:
+                                        try:
+                                            sharpness_arr = self.pm.read_ulonglong(melee_inst + self.melee_sharpness_offset)
+                                            if sharpness_arr:
+                                                count = self.pm.read_uint(sharpness_arr + 0x18)
                                                 if 0 < count < 20:
                                                     for i in range(count):
-                                                        elem_ptr = self.pm.read_ulonglong(bullets_arr + 0x20 + i * 8)
-                                                        if elem_ptr:
-                                                            if elem_ptr not in self._base_bullet_damages or multiplier == 1:
-                                                                raw_val = self.pm.read_int(elem_ptr + self.bullet_damage_offset)
-                                                                if 0 < raw_val < 99999:
-                                                                    self._base_bullet_damages[elem_ptr] = raw_val
+                                                        elem_ptr = self.pm.read_ulonglong(sharpness_arr + 0x20 + i * 8)
+                                                        if elem_ptr and elem_ptr not in self._base_sharpness_damages:
+                                                            raw_val = self.pm.read_int(elem_ptr + self.sharpness_damage_offset)
+                                                            if 0 < raw_val < 99999:
+                                                                self._base_sharpness_damages[elem_ptr] = raw_val
+                                        except Exception:
+                                            pass
 
-                                                            base_val = self._base_bullet_damages.get(elem_ptr, 25)
-                                                            target_val = 99999 if multiplier >= 99999 else base_val * multiplier
-                                                            self.pm.write_int(elem_ptr + self.bullet_damage_offset, target_val)
-                                    except Exception:
-                                        pass
+                                    # B. Check if held_item has _weapon component
+                                    weapon_inst = 0
+                                    if self.item_weapon_offset:
+                                        weapon_inst = self.pm.read_ulonglong(held_item + self.item_weapon_offset)
 
-                                # C. Scale WeaponInfo.ProjectileDamage
-                                if self.weapon_info_offset and self.proj_damage_offset:
-                                    try:
-                                        winfo_ptr = self.pm.read_ulonglong(weapon_inst + self.weapon_info_offset)
-                                        if winfo_ptr:
-                                            if winfo_ptr not in self._base_proj_damages or multiplier == 1:
-                                                raw_val = self.pm.read_int(winfo_ptr + self.proj_damage_offset)
-                                                if 0 < raw_val < 99999:
-                                                    self._base_proj_damages[winfo_ptr] = raw_val
+                                    if weapon_inst:
+                                        if self.weapon_attachments_offset and self.bullet_damage_offset and self.attachments_bullets_offset:
+                                            try:
+                                                attachments_ptr = self.pm.read_ulonglong(weapon_inst + self.weapon_attachments_offset)
+                                                if attachments_ptr:
+                                                    bullets_arr = self.pm.read_ulonglong(attachments_ptr + self.attachments_bullets_offset)
+                                                    if bullets_arr:
+                                                        count = self.pm.read_uint(bullets_arr + 0x18)
+                                                        if 0 < count < 20:
+                                                            for i in range(count):
+                                                                elem_ptr = self.pm.read_ulonglong(bullets_arr + 0x20 + i * 8)
+                                                                if elem_ptr and elem_ptr not in self._base_bullet_damages:
+                                                                    raw_val = self.pm.read_int(elem_ptr + self.bullet_damage_offset)
+                                                                    if 0 < raw_val < 99999:
+                                                                        self._base_bullet_damages[elem_ptr] = raw_val
+                                            except Exception:
+                                                pass
 
-                                            base_val = self._base_proj_damages.get(winfo_ptr, 25)
-                                            target_val = 99999 if multiplier >= 99999 else base_val * multiplier
-                                            self.pm.write_int(winfo_ptr + self.proj_damage_offset, target_val)
-                                    except Exception:
-                                        pass
+                                        # C. Check WeaponInfo.ProjectileDamage
+                                        if self.weapon_info_offset and self.proj_damage_offset:
+                                            try:
+                                                winfo_ptr = self.pm.read_ulonglong(weapon_inst + self.weapon_info_offset)
+                                                if winfo_ptr and winfo_ptr not in self._base_proj_damages:
+                                                    raw_val = self.pm.read_int(winfo_ptr + self.proj_damage_offset)
+                                                    if 0 < raw_val < 99999:
+                                                        self._base_proj_damages[winfo_ptr] = raw_val
+                                            except Exception:
+                                                pass
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # 3. Apply active scaling to fists
+        if self.punching_offset and self.punch_damage_offset and punching_inst:
+            try:
+                base_punch = self._base_punch_damage or 20
+                target_punch = 99999 if multiplier >= 99999 else base_punch * multiplier
+                self.pm.write_int(punching_inst + self.punch_damage_offset, target_punch)
+            except Exception:
+                pass
+
+        # 4. Apply active scaling across ALL tracked melee weapons (held, inventory, dropped)
+        if self.sharpness_damage_offset:
+            for elem_ptr, base_val in list(self._base_sharpness_damages.items()):
+                try:
+                    target_val = 99999 if multiplier >= 99999 else base_val * multiplier
+                    self.pm.write_int(elem_ptr + self.sharpness_damage_offset, target_val)
                 except Exception:
                     pass
-        except Exception:
-            pass
+
+        # 5. Apply active scaling across ALL tracked bullet upgrades (held, inventory, dropped)
+        if self.bullet_damage_offset:
+            for elem_ptr, base_val in list(self._base_bullet_damages.items()):
+                try:
+                    target_val = 99999 if multiplier >= 99999 else base_val * multiplier
+                    self.pm.write_int(elem_ptr + self.bullet_damage_offset, target_val)
+                except Exception:
+                    pass
+
+        # 6. Apply active scaling across ALL tracked firearm projectile damages (held, inventory, dropped)
+        if self.proj_damage_offset:
+            for winfo_ptr, base_val in list(self._base_proj_damages.items()):
+                try:
+                    target_val = 99999 if multiplier >= 99999 else base_val * multiplier
+                    self.pm.write_int(winfo_ptr + self.proj_damage_offset, target_val)
+                except Exception:
+                    pass
 
     def update(self) -> None:
         """Maintains active damage scaling during live gameplay ticks."""
