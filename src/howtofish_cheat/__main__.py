@@ -19,9 +19,16 @@ def main():
         default="How to Fish.exe",
         help="Target process executable name (default: 'How to Fish.exe')",
     )
+    parser.add_argument(
+        "--lang",
+        "-l",
+        choices=["zh", "en"],
+        default="en",
+        help="Initial interface language: 'zh' (Chinese) or 'en' (English) (default: 'en')",
+    )
     args = parser.parse_args()
 
-    trainer = HowToFishTrainer(process_name=args.process)
+    trainer = HowToFishTrainer(process_name=args.process, language=args.lang)
     try:
         trainer.run()
     except KeyboardInterrupt:

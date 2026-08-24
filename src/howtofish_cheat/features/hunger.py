@@ -14,6 +14,8 @@ class LockHungerCheat(CheatFeature):
         super().__init__(
             name="Lock Hunger / Infinite Fullness",
             description="Locks fullness meter at 100 and prevents hunger depletion over time or actions.",
+            name_zh="锁定饱食度 / 无限饱腹",
+            description_zh="锁定饱食度100，防止饱食度随时间或动作消耗。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,

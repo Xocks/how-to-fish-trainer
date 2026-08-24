@@ -16,6 +16,8 @@ class AddMoneyCheat(CheatFeature):
         super().__init__(
             name="Add Money (+1w)",
             description=f"Adds +${add_amount:,} (1w) money with sound FX and UI (Host: Global Sync | Client: Local UI).",
+            name_zh="增加金钱 (+1万)",
+            description_zh=f"增加 +${add_amount:,} (1万) 金币，附带音效与飘字UI(房主全局同步 / 客户端本地UI)。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
@@ -205,9 +207,11 @@ class AddMoneyCheat(CheatFeature):
         self.add_money()
         return True
 
-    def get_status_badge(self) -> str:
+    def get_status_badge(self, language: str = "en") -> str:
         """Returns rich formatted status badge showing current balance."""
         balance = self.get_current_balance()
         if balance > 0:
             return f"[bold green]${balance:,}[/bold green]"
+        if language == "zh":
+            return "[bold cyan]按键增加 +1万[/bold cyan]"
         return "[bold cyan]PRESS TO +1w[/bold cyan]"

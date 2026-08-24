@@ -14,6 +14,8 @@ class LockHealthCheat(CheatFeature):
         super().__init__(
             name="Lock Health",
             description="Locks HP to 100, blocks all damage, and dissipates elemental gauges.",
+            name_zh="锁定生命 / 无敌",
+            description_zh="锁定血量100，免疫一切伤害并消除异常状态(火/毒等)。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,

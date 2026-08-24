@@ -16,6 +16,7 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
 | **F4** | **Unlimited Ammo** | Infinite ammunition for all firearms without magazine depletion or forced reloads. |
 | **F5** | **Damage Multiplier** | Cycles damage multiplier for firearms, melee weapons, and fists: **`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot Kill (99999)`**. |
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
+| **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
 | **F10** | **Safe Exit** | Restores all modified code/memory and exits the trainer safely. |
 
 ---
@@ -65,6 +66,7 @@ uv run pytest -v
 - Press **F4** to toggle **Unlimited Ammo**.
 - Press **F5** to cycle **Damage Multiplier** (`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot`).
 - Press **F6** to **Add Money (+1w / +$10,000)** on press.
+- Press **F12** to **Switch Language (中文 / EN)** at any time.
 - Press **F10** or **Ctrl+C** to cleanly exit the trainer.
 
 ---

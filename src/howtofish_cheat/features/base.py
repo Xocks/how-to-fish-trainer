@@ -10,14 +10,34 @@ from ..mono.patcher import MethodPatcher
 class CheatFeature(ABC):
     """Abstract base class for individual cheat features."""
 
-    def __init__(self, name: str, description: str, hotkey: str, pm: pymem.Pymem, mono: MonoBridge, patcher: MethodPatcher):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        hotkey: str,
+        pm: pymem.Pymem,
+        mono: MonoBridge,
+        patcher: MethodPatcher,
+        name_zh: Optional[str] = None,
+        description_zh: Optional[str] = None,
+    ):
         self.name = name
         self.description = description
+        self.name_zh = name_zh or name
+        self.description_zh = description_zh or description
         self.hotkey = hotkey
         self.pm = pm
         self.mono = mono
         self.patcher = patcher
         self.is_enabled = False
+
+    def get_name(self, language: str = "en") -> str:
+        """Returns the localized feature name."""
+        return self.name_zh if language == "zh" else self.name
+
+    def get_description(self, language: str = "en") -> str:
+        """Returns the localized feature description."""
+        return self.description_zh if language == "zh" else self.description
 
     @abstractmethod
     def enable(self) -> bool:

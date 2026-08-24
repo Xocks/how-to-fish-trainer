@@ -11,12 +11,15 @@ class DamageMultiplierCheat(CheatFeature):
     """Cycles through damage multipliers (1x, 2x, 5x, 10x, One-Shot Kill) for all weapons, melee, and fists via in-memory scaling."""
 
     MODES: List[str] = ["1x (Normal)", "2x", "5x", "10x", "One-Shot Kill"]
+    MODES_ZH: List[str] = ["1x (默认)", "2x", "5x", "10x", "一击秒杀 (One-Shot)"]
     MULTIPLIERS: List[int] = [1, 2, 5, 10, 99999]
 
     def __init__(self, pm, mono, patcher=None, hotkey: str = "F5"):
         super().__init__(
             name="Damage Multiplier",
             description="Cycles damage multiplier for firearms, melee weapons, and punches (1x -> 2x -> 5x -> 10x -> One-Shot).",
+            name_zh="伤害倍率调节",
+            description_zh="循环切换枪械、近战武器及拳头伤害倍率(1倍 -> 2倍 -> 5倍 -> 10倍 -> 一击必杀)。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
@@ -310,16 +313,27 @@ class DamageMultiplierCheat(CheatFeature):
             multiplier = self.MULTIPLIERS[self.current_mode_index]
             self._maintain_all_damages(multiplier)
 
-    def get_status_badge(self) -> str:
+    def get_status_badge(self, language: str = "en") -> str:
         """Returns a rich formatted status badge reflecting the active multiplier mode."""
-        mode_name = self.MODES[self.current_mode_index]
-        if self.current_mode_index == 0:
-            return "[dim red]DISABLED (1x)[/dim red]"
-        elif self.current_mode_index == 1:
-            return "[bold green]ACTIVE (2x)[/bold green]"
-        elif self.current_mode_index == 2:
-            return "[bold green]ACTIVE (5x)[/bold green]"
-        elif self.current_mode_index == 3:
-            return "[bold yellow]ACTIVE (10x)[/bold yellow]"
+        if language == "zh":
+            if self.current_mode_index == 0:
+                return "[dim red]已关闭 (1x)[/dim red]"
+            elif self.current_mode_index == 1:
+                return "[bold green]已开启 (2x)[/bold green]"
+            elif self.current_mode_index == 2:
+                return "[bold green]已开启 (5x)[/bold green]"
+            elif self.current_mode_index == 3:
+                return "[bold yellow]已开启 (10x)[/bold yellow]"
+            else:
+                return "[bold red]一击秒杀[/bold red]"
         else:
-            return "[bold red]ONE-SHOT KILL[/bold red]"
+            if self.current_mode_index == 0:
+                return "[dim red]DISABLED (1x)[/dim red]"
+            elif self.current_mode_index == 1:
+                return "[bold green]ACTIVE (2x)[/bold green]"
+            elif self.current_mode_index == 2:
+                return "[bold green]ACTIVE (5x)[/bold green]"
+            elif self.current_mode_index == 3:
+                return "[bold yellow]ACTIVE (10x)[/bold yellow]"
+            else:
+                return "[bold red]ONE-SHOT KILL[/bold red]"

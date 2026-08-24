@@ -14,6 +14,8 @@ class UnlimitedAmmoCheat(CheatFeature):
         super().__init__(
             name="Unlimited Ammo",
             description="Infinite ammunition for all weapons (no ammo consumption or reload interruptions).",
+            name_zh="无限弹药 / 免换弹",
+            description_zh="所有枪械无限弹药(不消耗子弹且无换弹打断)。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,

@@ -15,6 +15,8 @@ class InfiniteJumpCheat(CheatFeature):
         super().__init__(
             name="Infinite Air Jump",
             description="Allows jumping in mid-air infinitely.",
+            name_zh="无限多段跳 / 空中连跳",
+            description_zh="允许在空中无限次起跳。",
             hotkey=hotkey,
             pm=pm,
             mono=mono,
