@@ -1,5 +1,7 @@
 # How to Fish - Memory Trainer
 
+[English](README.md) | [简体中文](README_zh.md)
+
 An external Python-based trainer and cheat engine for the Unity Mono game **[How to Fish](https://store.steampowered.com/)**.
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
