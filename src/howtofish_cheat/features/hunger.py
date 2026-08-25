@@ -10,7 +10,13 @@ logger = logging.getLogger(__name__)
 class LockHungerCheat(CheatFeature):
     """Locks fullness/hunger meter and prevents hunger depletion."""
 
-    def __init__(self, pm, mono, patcher, hotkey: str = "F2"):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F2",
+    ):
         super().__init__(
             name="Lock Hunger / Infinite Fullness",
             description="Locks fullness meter at 100 and prevents hunger depletion over time or actions.",
@@ -30,6 +36,8 @@ class LockHungerCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds and JIT compiles required hunger methods and caches memory offsets."""
+        if not self.mono or not self.patcher or not self.pm:
+            return False
         try:
             vitals_cls = self.mono.find_class("Assembly-CSharp", "PlayerVitals")
             player_cls = self.mono.find_class("Assembly-CSharp", "Player")
@@ -105,8 +113,9 @@ class LockHungerCheat(CheatFeature):
     def disable(self) -> bool:
         """Restores original hunger methods."""
         try:
-            for mname in self.method_addrs.keys():
-                self.patcher.restore(mname)
+            if self.patcher:
+                for mname in self.method_addrs.keys():
+                    self.patcher.restore(mname)
 
             self.is_enabled = False
             return True

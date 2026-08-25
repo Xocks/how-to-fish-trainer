@@ -10,7 +10,13 @@ logger = logging.getLogger(__name__)
 class LockHealthCheat(CheatFeature):
     """Locks player health, disables incoming damage, and dissipates elemental gauges without altering movement."""
 
-    def __init__(self, pm, mono, patcher, hotkey: str = "F1"):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F1",
+    ):
         super().__init__(
             name="Lock Health",
             description="Locks HP to 100, blocks all damage, and dissipates elemental gauges.",
@@ -37,6 +43,8 @@ class LockHealthCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds and JIT compiles all damage and elemental methods, and caches memory offsets."""
+        if not self.mono or not self.patcher or not self.pm:
+            return False
         try:
             vitals_cls = self.mono.find_class("Assembly-CSharp", "PlayerVitals")
             player_cls = self.mono.find_class("Assembly-CSharp", "Player")
@@ -121,8 +129,9 @@ class LockHealthCheat(CheatFeature):
     def disable(self) -> bool:
         """Restores original code and resets invulnerability timer."""
         try:
-            for mname in self.method_addrs.keys():
-                self.patcher.restore(mname)
+            if self.patcher:
+                for mname in self.method_addrs.keys():
+                    self.patcher.restore(mname)
 
             self._reset_invulnerability()
             self.is_enabled = False

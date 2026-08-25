@@ -14,7 +14,13 @@ class DamageMultiplierCheat(CheatFeature):
     MODES_ZH: List[str] = ["1x (默认)", "2x", "5x", "10x", "一击秒杀 (One-Shot)"]
     MULTIPLIERS: List[int] = [1, 2, 5, 10, 99999]
 
-    def __init__(self, pm, mono, patcher=None, hotkey: str = "F5"):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F5",
+    ):
         super().__init__(
             name="Damage Multiplier",
             description="Cycles damage multiplier for firearms, melee weapons, and punches (1x -> 2x -> 5x -> 10x -> One-Shot).",
@@ -56,6 +62,8 @@ class DamageMultiplierCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds classes and caches memory offsets for live heap traversal."""
+        if not self.mono or not self.pm:
+            return False
         try:
             player_cls = self.mono.find_class("Assembly-CSharp", "Player")
             punching_cls = self.mono.find_class("Assembly-CSharp", "PlayerPunching")

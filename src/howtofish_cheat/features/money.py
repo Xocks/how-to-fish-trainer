@@ -12,7 +12,14 @@ class AddMoneyCheat(CheatFeature):
 
     DEFAULT_ADD_AMOUNT = 10000
 
-    def __init__(self, pm, mono, patcher=None, hotkey: str = "F6", add_amount: int = 10000):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F6",
+        add_amount: int = 10000,
+    ):
         super().__init__(
             name="Add Money (+1w)",
             description=f"Adds +${add_amount:,} (1w) money with sound FX and UI (Host: Global Sync | Client: Local UI).",
@@ -45,6 +52,8 @@ class AddMoneyCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds MoneyManager, Player, and PlayerUI classes, resolves offsets, and pre-compiles JIT methods."""
+        if not self.mono or not self.pm:
+            return False
         try:
             self.mm_class = self.mono.find_class("Assembly-CSharp", "MoneyManager")
             self.player_class = self.mono.find_class("Assembly-CSharp", "Player")

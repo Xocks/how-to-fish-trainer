@@ -10,7 +10,13 @@ logger = logging.getLogger(__name__)
 class UnlimitedAmmoCheat(CheatFeature):
     """Provides infinite ammunition for all firearms by hooking set_Ammo and locking weapon ammo in memory."""
 
-    def __init__(self, pm, mono, patcher, hotkey: str = "F4"):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F4",
+    ):
         super().__init__(
             name="Unlimited Ammo",
             description="Infinite ammunition for all weapons (no ammo consumption or reload interruptions).",
@@ -34,6 +40,8 @@ class UnlimitedAmmoCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds and JIT compiles Weapon.set_Ammo and caches memory offsets."""
+        if not self.mono or not self.patcher or not self.pm:
+            return False
         try:
             player_cls = self.mono.find_class("Assembly-CSharp", "Player")
             holding_cls = self.mono.find_class("Assembly-CSharp", "PlayerHolding")
@@ -93,8 +101,9 @@ class UnlimitedAmmoCheat(CheatFeature):
     def disable(self) -> bool:
         """Restores original Weapon.set_Ammo bytecode."""
         try:
-            for mname in self.method_addrs.keys():
-                self.patcher.restore(mname)
+            if self.patcher:
+                for mname in self.method_addrs.keys():
+                    self.patcher.restore(mname)
 
             self.is_enabled = False
             return True

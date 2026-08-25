@@ -11,7 +11,13 @@ logger = logging.getLogger(__name__)
 class InfiniteJumpCheat(CheatFeature):
     """Allows infinite mid-air jumping without touching God Mode or health."""
 
-    def __init__(self, pm, mono, patcher, hotkey: str = "F3"):
+    def __init__(
+        self,
+        pm: Optional[object] = None,
+        mono: Optional[object] = None,
+        patcher: Optional[object] = None,
+        hotkey: str = "F3",
+    ):
         super().__init__(
             name="Infinite Air Jump",
             description="Allows jumping in mid-air infinitely.",
@@ -28,6 +34,8 @@ class InfiniteJumpCheat(CheatFeature):
 
     def prepare(self) -> bool:
         """Finds and JIT compiles PlayerMovement.JumpInput and PlayerMovement.Jump."""
+        if not self.mono or not self.patcher:
+            return False
         try:
             mov_cls = self.mono.find_class("Assembly-CSharp", "PlayerMovement")
 
@@ -77,7 +85,8 @@ class InfiniteJumpCheat(CheatFeature):
     def disable(self) -> bool:
         """Restores original JumpInput logic (restores normal ground/coyote jumping)."""
         try:
-            self.patcher.restore("JumpInput")
+            if self.patcher:
+                self.patcher.restore("JumpInput")
             self.is_enabled = False
             return True
         except Exception as e:

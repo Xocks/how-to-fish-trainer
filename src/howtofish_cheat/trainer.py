@@ -12,13 +12,16 @@ import pymem.process
 from rich.console import Console
 from rich.live import Live
 
-from .features.base import CheatFeature
-from .features.health import LockHealthCheat
-from .features.hunger import LockHungerCheat
-from .features.jump import InfiniteJumpCheat
-from .features.ammo import UnlimitedAmmoCheat
-from .features.damage import DamageMultiplierCheat
-from .features.money import AddMoneyCheat
+from .features import (
+    CheatFeature,
+    LockHealthCheat,
+    LockHungerCheat,
+    InfiniteJumpCheat,
+    UnlimitedAmmoCheat,
+    DamageMultiplierCheat,
+    AddMoneyCheat,
+    get_default_features,
+)
 from .mono.bridge import MonoBridge
 from .mono.patcher import MethodPatcher
 from .ui.console import TrainerUI
@@ -36,7 +39,7 @@ class HowToFishTrainer:
         self.pm: Optional[pymem.Pymem] = None
         self.mono: Optional[MonoBridge] = None
         self.patcher: Optional[MethodPatcher] = None
-        self.features: List[CheatFeature] = []
+        self.features: List[CheatFeature] = get_default_features()
         self.is_running = False
         self.status_message = tr("starting", self.language)
         self.console = Console()
@@ -206,7 +209,7 @@ class HowToFishTrainer:
                 pass
             self.pm = None
 
-        self.features.clear()
+        self.features = get_default_features()
 
     def _cleanup(self) -> None:
         """Restores all memory patches, frees handles, and unhooks all hotkeys."""

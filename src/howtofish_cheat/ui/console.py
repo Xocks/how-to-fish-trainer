@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.layout import Layout
-from ..features.base import CheatFeature
+from ..features import CheatFeature, get_default_features
 from ..i18n import tr
 
 
@@ -22,7 +22,7 @@ class TrainerUI:
         process_name: str,
         pid: int,
         mono_domain: int,
-        features: List[CheatFeature],
+        features: Optional[List[CheatFeature]] = None,
         status_message: str = "Ready",
         language: str = "zh",
     ) -> Panel:
@@ -55,7 +55,9 @@ class TrainerUI:
         table.add_column(tr("col_status", language), justify="center", width=18)
         table.add_column(tr("col_description", language), style="dim")
 
-        for f in features:
+        display_features = features if features else get_default_features()
+
+        for f in display_features:
             if hasattr(f, "get_status_badge"):
                 try:
                     status_badge = f.get_status_badge(language=language)

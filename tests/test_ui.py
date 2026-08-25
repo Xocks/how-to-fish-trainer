@@ -1,0 +1,81 @@
+"""Tests for TrainerUI dashboard rendering when connected and disconnected."""
+
+import unittest
+from unittest.mock import MagicMock, patch
+from rich.panel import Panel
+from rich.table import Table
+from rich.console import Group
+from howtofish_cheat.ui.console import TrainerUI
+from howtofish_cheat.features import get_default_features
+from howtofish_cheat.trainer import HowToFishTrainer
+
+
+class TestTrainerUIDashboard(unittest.TestCase):
+    """Test dashboard rendering and cheat table visibility in all connection states."""
+
+    def setUp(self):
+        self.ui = TrainerUI()
+
+    def test_get_default_features(self):
+        """Verify default feature catalog contains all 6 cheats."""
+        features = get_default_features()
+        self.assertEqual(len(features), 6)
+        hotkeys = [f.hotkey for f in features]
+        self.assertEqual(hotkeys, ["F1", "F2", "F3", "F4", "F5", "F6"])
+
+    def test_dashboard_shows_cheats_when_disconnected_with_empty_features(self):
+        """Verify cheats table is populated even when disconnected and features=[] is passed."""
+        panel_zh = self.ui.generate_dashboard(
+            is_attached=False,
+            process_name="How to Fish.exe",
+            pid=0,
+            mono_domain=0,
+            features=[],
+            status_message="Waiting...",
+            language="zh",
+        )
+        self.assertIsInstance(panel_zh, Panel)
+
+        # Extract Table from Group renderable
+        group = panel_zh.renderable
+        self.assertIsInstance(group, Group)
+        tables = [item for item in group.renderables if isinstance(item, Table)]
+        self.assertEqual(len(tables), 1)
+        table = tables[0]
+
+        # Ensure all 6 cheat rows are present in the table
+        self.assertEqual(len(table.rows), 6)
+
+    def test_dashboard_shows_cheats_when_disconnected_with_none_features(self):
+        """Verify cheats table is populated when features=None is passed."""
+        panel_en = self.ui.generate_dashboard(
+            is_attached=False,
+            process_name="How to Fish.exe",
+            pid=0,
+            mono_domain=0,
+            features=None,
+            status_message="Waiting...",
+            language="en",
+        )
+        self.assertIsInstance(panel_en, Panel)
+
+        group = panel_en.renderable
+        tables = [item for item in group.renderables if isinstance(item, Table)]
+        self.assertEqual(len(tables), 1)
+        table = tables[0]
+        self.assertEqual(len(table.rows), 6)
+
+    @patch("howtofish_cheat.trainer.keyboard")
+    def test_trainer_features_populated_before_attachment(self, mock_keyboard):
+        """Verify HowToFishTrainer initializes self.features with all available cheats before attaching."""
+        trainer = HowToFishTrainer(language="zh")
+        self.assertEqual(len(trainer.features), 6)
+        self.assertFalse(trainer.features[0].is_enabled)
+
+        # Cleanup should also reset to default features rather than leaving empty list
+        trainer._cleanup_game_resources()
+        self.assertEqual(len(trainer.features), 6)
+
+
+if __name__ == "__main__":
+    unittest.main()

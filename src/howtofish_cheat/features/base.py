@@ -15,9 +15,9 @@ class CheatFeature(ABC):
         name: str,
         description: str,
         hotkey: str,
-        pm: pymem.Pymem,
-        mono: MonoBridge,
-        patcher: MethodPatcher,
+        pm: Optional[pymem.Pymem] = None,
+        mono: Optional[MonoBridge] = None,
+        patcher: Optional[MethodPatcher] = None,
         name_zh: Optional[str] = None,
         description_zh: Optional[str] = None,
     ):
