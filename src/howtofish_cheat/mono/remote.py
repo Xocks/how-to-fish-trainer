@@ -89,7 +89,16 @@ class RemoteExecutor:
 
     def write_string(self, offset_in_scratch: int, text: str) -> int:
         """Writes a null-terminated UTF-8 string to the scratch buffer."""
+        if not self.scratch_base:
+            raise RuntimeError("Scratch buffer is not allocated.")
+        if offset_in_scratch < 0:
+            raise ValueError("Scratch offset cannot be negative.")
         encoded = text.encode("utf-8") + b"\x00"
+        if offset_in_scratch + len(encoded) > self.scratch_size:
+            raise ValueError(
+                f"String does not fit in remote scratch buffer: "
+                f"offset=0x{offset_in_scratch:X}, size={len(encoded)}"
+            )
         target_addr = self.scratch_base + offset_in_scratch
         self.pm.write_bytes(target_addr, encoded, len(encoded))
         return target_addr

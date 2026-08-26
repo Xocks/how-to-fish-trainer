@@ -208,6 +208,49 @@ class MonoBridge:
         offset = self.executor.call(get_offset_fn, field_ptr)
         return offset
 
+    def create_string(self, text: str, scratch_offset: int = 0x1800) -> int:
+        """Creates a managed ``System.String`` in the target Mono domain.
+
+        ``mono_string_new`` expects UTF-8 input and returns a managed object
+        owned by Mono's GC.  The remote call still goes through
+        :class:`RemoteExecutor`, so the worker thread is attached to Mono TLS
+        before entering the runtime.
+        """
+        if not isinstance(text, str):
+            raise TypeError("Mono strings can only be created from str values.")
+        if not self.root_domain:
+            raise RuntimeError("Mono root domain is not initialized.")
+
+        utf8_addr = self.executor.write_string(scratch_offset, text)
+        string_ptr = self.executor.call(
+            self.get_export("mono_string_new"), self.root_domain, utf8_addr
+        )
+        if not string_ptr:
+            raise RuntimeError("mono_string_new returned a null string pointer.")
+        return string_ptr
+
+    def read_string(self, string_ptr: int, max_chars: int = 4096) -> str:
+        """Reads a managed Mono string using its UTF-16 character buffer."""
+        if not string_ptr:
+            return ""
+        if max_chars <= 0:
+            raise ValueError("max_chars must be greater than zero.")
+
+        length = self.executor.call(self.get_export("mono_string_length"), string_ptr)
+        if length > max_chars:
+            raise ValueError(
+                f"Managed string length {length} exceeds safety limit {max_chars}."
+            )
+        if length == 0:
+            return ""
+
+        chars_ptr = self.executor.call(self.get_export("mono_string_chars"), string_ptr)
+        if not chars_ptr:
+            raise RuntimeError("mono_string_chars returned a null character pointer.")
+
+        raw = self.pm.read_bytes(chars_ptr, int(length) * 2)
+        return raw.decode("utf-16-le", errors="replace")
+
     def close(self) -> None:
         """Cleans up remote allocations."""
         self.executor.close()
