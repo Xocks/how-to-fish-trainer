@@ -10,6 +10,7 @@ from howtofish_cheat.features.jump import InfiniteJumpCheat
 from howtofish_cheat.features.ammo import UnlimitedAmmoCheat
 from howtofish_cheat.features.damage import DamageMultiplierCheat
 from howtofish_cheat.features.money import AddMoneyCheat
+from howtofish_cheat.features.spawner import ItemSpawnerCheat
 from howtofish_cheat.ui.console import TrainerUI
 from howtofish_cheat.trainer import HowToFishTrainer
 
@@ -48,6 +49,7 @@ class TestI18nAndLanguageSwitch(unittest.TestCase):
             UnlimitedAmmoCheat(self.mock_pm, self.mock_mono, self.mock_patcher),
             DamageMultiplierCheat(self.mock_pm, self.mock_mono, self.mock_patcher),
             AddMoneyCheat(self.mock_pm, self.mock_mono, self.mock_patcher),
+            ItemSpawnerCheat(self.mock_pm, self.mock_mono, self.mock_patcher),
         ]
 
         expected_zh_names = [
@@ -57,6 +59,7 @@ class TestI18nAndLanguageSwitch(unittest.TestCase):
             "无限弹药 / 免换弹",
             "伤害倍率调节",
             "增加金钱 (+1万)",
+            "物品生成器",
         ]
 
         expected_en_names = [
@@ -66,6 +69,7 @@ class TestI18nAndLanguageSwitch(unittest.TestCase):
             "Unlimited Ammo",
             "Damage Multiplier",
             "Add Money (+1w)",
+            "Item Spawner",
         ]
 
         for f, zh_name, en_name in zip(features, expected_zh_names, expected_en_names):

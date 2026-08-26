@@ -17,11 +17,12 @@ class TestTrainerUIDashboard(unittest.TestCase):
         self.ui = TrainerUI()
 
     def test_get_default_features(self):
-        """Verify default feature catalog contains all 6 cheats."""
+        """Verify default feature catalog contains all 7 cheats."""
         features = get_default_features()
-        self.assertEqual(len(features), 6)
+        self.assertEqual(len(features), 7)
         hotkeys = [f.hotkey for f in features]
-        self.assertEqual(hotkeys, ["F1", "F2", "F3", "F4", "F5", "F6"])
+        self.assertEqual(hotkeys, ["F1", "F2", "F3", "F4", "F5", "F6", "F8"])
+        self.assertEqual(features[-1].select_hotkey, "F7")
 
     def test_dashboard_shows_cheats_when_disconnected_with_empty_features(self):
         """Verify cheats table is populated even when disconnected and features=[] is passed."""
@@ -43,8 +44,8 @@ class TestTrainerUIDashboard(unittest.TestCase):
         self.assertEqual(len(tables), 1)
         table = tables[0]
 
-        # Ensure all 6 cheat rows are present in the table
-        self.assertEqual(len(table.rows), 6)
+        # Ensure all 7 cheat rows are present in the table
+        self.assertEqual(len(table.rows), 7)
 
     def test_dashboard_shows_cheats_when_disconnected_with_none_features(self):
         """Verify cheats table is populated when features=None is passed."""
@@ -63,18 +64,18 @@ class TestTrainerUIDashboard(unittest.TestCase):
         tables = [item for item in group.renderables if isinstance(item, Table)]
         self.assertEqual(len(tables), 1)
         table = tables[0]
-        self.assertEqual(len(table.rows), 6)
+        self.assertEqual(len(table.rows), 7)
 
     @patch("howtofish_cheat.trainer.keyboard")
     def test_trainer_features_populated_before_attachment(self, mock_keyboard):
         """Verify HowToFishTrainer initializes self.features with all available cheats before attaching."""
         trainer = HowToFishTrainer(language="zh")
-        self.assertEqual(len(trainer.features), 6)
+        self.assertEqual(len(trainer.features), 7)
         self.assertFalse(trainer.features[0].is_enabled)
 
         # Cleanup should also reset to default features rather than leaving empty list
         trainer._cleanup_game_resources()
-        self.assertEqual(len(trainer.features), 6)
+        self.assertEqual(len(trainer.features), 7)
 
 
 if __name__ == "__main__":

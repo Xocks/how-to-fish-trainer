@@ -59,7 +59,7 @@ class TestUnlimitedAmmo(unittest.TestCase):
         self.mock_mono.executor.call.return_value = 0x22222
 
         trainer._setup_features()
-        self.assertEqual(len(trainer.features), 6)
+        self.assertEqual(len(trainer.features), 7)
         feature_names = [f.name for f in trainer.features]
         self.assertIn("Lock Health", feature_names)
         self.assertIn("Lock Hunger / Infinite Fullness", feature_names)
