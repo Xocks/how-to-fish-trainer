@@ -98,3 +98,20 @@ def test_find_method_by_signature_disambiguates_same_count_overloads():
         0x9000, "GetSpawnable", (MonoBridge.MONO_TYPE_U1,)
     ) == 0xB000
     assert bridge.pm.write_ulonglong.call_count == 3
+
+
+def test_managed_object_gc_handle_is_pinned_and_released():
+    bridge = MonoBridge.__new__(MonoBridge)
+    bridge.exports = {
+        "mono_gchandle_new": 0x700,
+        "mono_gchandle_free": 0x800,
+    }
+    bridge.executor = MagicMock()
+    bridge.executor.call.side_effect = [0x123, 0]
+
+    assert bridge.pin_object(0xCAFE) == 0x123
+    bridge.free_gchandle(0x123)
+    assert bridge.executor.call.call_args_list == [
+        ((0x700, 0xCAFE, 1),),
+        ((0x800, 0x123),),
+    ]

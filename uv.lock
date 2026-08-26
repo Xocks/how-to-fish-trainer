@@ -168,7 +168,7 @@ wheels = [
 
 [[package]]
 name = "howtofish-pycheat"
-version = "0.2.0rc2"
+version = "0.2.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "dnfile" },

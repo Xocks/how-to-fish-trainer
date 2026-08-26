@@ -318,6 +318,22 @@ class MonoBridge:
             raise RuntimeError("mono_string_new returned a null string pointer.")
         return string_ptr
 
+    def pin_object(self, object_ptr: int) -> int:
+        """Pins a managed object until :meth:`free_gchandle` is called."""
+        if not object_ptr:
+            raise ValueError("Cannot pin a null managed object pointer.")
+        handle = self.executor.call(
+            self.get_export("mono_gchandle_new"), object_ptr, 1
+        )
+        if not handle:
+            raise RuntimeError("mono_gchandle_new returned an invalid handle.")
+        return int(handle)
+
+    def free_gchandle(self, handle: int) -> None:
+        """Releases a managed GC handle created by :meth:`pin_object`."""
+        if handle:
+            self.executor.call(self.get_export("mono_gchandle_free"), handle)
+
     def read_string(self, string_ptr: int, max_chars: int = 4096) -> str:
         """Reads a managed Mono string using its UTF-16 character buffer."""
         if not string_ptr:

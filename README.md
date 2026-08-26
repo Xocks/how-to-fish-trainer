@@ -40,7 +40,7 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
    - **Unlimited Ammo (`F4`)**: JIT-patches `Weapon.set_Ammo` with `RET` (`0xC3`) and actively locks magazine capacity to `999` while resetting reload flags.
    - **Damage Multiplier (`F5`)**: Pure real-time in-memory scaling across `PlayerPunching._damage`, `Melee._sharpnessUpgrades` array, `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage` (1x, 2x, 5x, 10x, One-Shot Kill).
    - **Add Money (`F6`)**: Directly updates authoritative static `<Money>k__BackingField` and FishNet `SyncVar<int> _money`, invokes `PlayerUI.SetMoney` for floating `+$10000` text + HUD animated roll, and calls `MoneyManager.MoneySound` for audio feedback.
-   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through the exact `GameInfo.GetSpawnable(byte)` overload, reads native item metadata, and invokes `DazedCommands.UseSpawnCommand` so Unity instantiation and FishNet `Server.Spawn` follow the game's own lifecycle. Joined clients are rejected.
+   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through the exact `GameInfo.GetSpawnable(byte)` overload, classifies the prefab catalog, and dispatches `DazedCommands.UseSpawnCommand` from a one-shot `Player.LateUpdate` main-thread gate so Unity instantiation and FishNet `Server.Spawn` follow the game's own lifecycle. Joined clients are rejected.
    - Disabling any cheat or exiting cleanly restores original machine code bytes and base values.
 3. **Interactive Console UI (`howtofish_cheat.ui.console`)**:
    - Live status display with connection status, active PID, Mono domain pointer, and real-time cheat states.
@@ -81,6 +81,8 @@ uv run pytest -v
 ### 3. Item Spawner Validation and Diagnostics
 
 Use a new disposable save for initial testing. Verify one fish and one firearm in single-player first, then test host synchronization with a second client. Quest or unknown items are visible but require a second confirmation because they may affect progression or saves.
+
+Steam Build `24911270` exposes 85 entries in the game's native spawn dictionary (IDs `0–85`, with ID `30` empty). Use **PageUp / PageDown** to view every page; fish and weapons are classified separately.
 
 After testing, create a sanitized support bundle inside `test-artifacts/`:
 

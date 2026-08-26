@@ -41,7 +41,7 @@
    - **无限弹药 (`F4`)**：对 `Weapon.set_Ammo` 写入 `RET` (`0xC3`) 指令，并在内存中锁定弹匣容量为 `999` 及重置换弹标记。
    - **伤害倍率 (`F5`)**：实时动态缩放 `PlayerPunching._damage`、`Melee._sharpnessUpgrades` 数组、`Attachments._bulletUpgrades` 数组以及 `WeaponInfo.ProjectileDamage`（1x, 2x, 5x, 10x, 99999x）。
    - **增加金币 (`F6`)**：直接写入权威静态字段 `<Money>k__BackingField` 与 FishNet `SyncVar<int> _money`，触发 `PlayerUI.SetMoney` 播放飘字动画，并调用 `MoneyManager.MoneySound` 播放拾取音效。
-   - **物品生成器 (`F7` / `F8`)**：精确解析 `GameInfo.GetSpawnable(byte)` 重载后枚举 ID 并读取原生物品信息，再调用 `DazedCommands.UseSpawnCommand`，让 Unity 实例化和 FishNet `Server.Spawn` 沿用游戏自身生命周期；普通联机客户端会被拒绝。
+   - **物品生成器 (`F7` / `F8`)**：精确解析 `GameInfo.GetSpawnable(byte)` 重载后枚举、分类物品，并通过一次性的 `Player.LateUpdate` 主线程入口调用 `DazedCommands.UseSpawnCommand`，让 Unity 实例化和 FishNet `Server.Spawn` 沿用游戏自身生命周期；普通联机客户端会被拒绝。
    - **安全还原**：关闭功能或退出修改器时，自动恢复原始机器码字节与伤害基准值。
 
 3. **现代化终端 UI (`howtofish_cheat.ui.console`)**：
@@ -86,6 +86,8 @@ uv run pytest -v
 ### 3. 物品生成器测试与诊断
 
 首次测试请使用新建的临时存档。先在单人模式分别验证一条鱼和一把枪，再用第二个客户端验证房主生成后的可见性与拾取同步。任务或未知物品虽然会显示，但因可能影响任务或存档，必须二次确认。
+
+Steam Build `24911270` 的游戏原生可生成字典共有 85 项（ID `0–85`，ID `30` 为空）。目录一次只显示一页，请使用 **PageUp / PageDown** 查看其余条目；鱼和武器会显示正确分类。
 
 测试结束后，可在 `test-artifacts/` 中生成脱敏诊断包：
 

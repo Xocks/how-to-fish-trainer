@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import struct
+import threading
 import time
 from dataclasses import asdict, dataclass
 from enum import IntEnum
@@ -44,6 +46,27 @@ class ItemSpawnerCheat(CheatFeature):
 
     SELECT_HOTKEY = "F7"
     SPAWN_COOLDOWN_SECONDS = 0.5
+    MAIN_THREAD_TIMEOUT_SECONDS = 4.0
+    MAIN_THREAD_PATCH_ID = "spawner.main_thread_dispatch"
+
+    # Build 24911270 keeps catchable creatures at IDs 0-52. Item._type is not
+    # serialized on the prefab catalog, so get_Type() returns its default value
+    # until an item instance has gone through Unity initialization.
+    FISH_ID_RANGE = range(0, 53)
+    WEAPON_SPAWN_KEYS = frozenset(
+        {
+            "assaultrifle",
+            "brassknuckles",
+            "brassknucklespackedbackup",
+            "dynamite",
+            "knife",
+            "knifepackedbackup",
+            "pistol",
+            "shotgun",
+            "smg",
+            "sniperrifle",
+        }
+    )
 
     def __init__(
         self,
@@ -53,6 +76,8 @@ class ItemSpawnerCheat(CheatFeature):
         hotkey: str = "F8",
         event_sink: Optional[Callable[[str, dict], None]] = None,
         clock: Callable[[], float] = time.monotonic,
+        wait_clock: Callable[[], float] = time.monotonic,
+        sleeper: Callable[[float], None] = time.sleep,
     ):
         super().__init__(
             name="Item Spawner",
@@ -72,7 +97,10 @@ class ItemSpawnerCheat(CheatFeature):
         self.last_action_kwargs: dict = {}
         self._event_sink = event_sink
         self._clock = clock
+        self._wait_clock = wait_clock
+        self._sleeper = sleeper
         self._last_spawn_at = float("-inf")
+        self._spawn_lock = threading.Lock()
 
         self.get_spawnable_native: Optional[int] = None
         self.get_display_name_native: Optional[int] = None
@@ -82,6 +110,7 @@ class ItemSpawnerCheat(CheatFeature):
         self.use_spawn_command_native: Optional[int] = None
         self.get_server_instance_native: Optional[int] = None
         self.get_is_server_initialized_native: Optional[int] = None
+        self.player_late_update_native: Optional[int] = None
 
     @property
     def catalog_by_id(self) -> Dict[int, SpawnableItem]:
@@ -134,6 +163,7 @@ class ItemSpawnerCheat(CheatFeature):
             network_behaviour_cls = self.mono.find_class(
                 "FishNet.Runtime", "NetworkBehaviour", "FishNet.Object"
             )
+            player_cls = self.mono.find_class("Assembly-CSharp", "Player")
 
             self.get_spawnable_native = self._compile(
                 game_info_cls,
@@ -155,6 +185,9 @@ class ItemSpawnerCheat(CheatFeature):
             )
             self.get_is_server_initialized_native = self._compile(
                 network_behaviour_cls, "get_IsServerInitialized", 0
+            )
+            self.player_late_update_native = self._compile(
+                player_cls, "LateUpdate", 0
             )
             self._record("spawner_prepared", success=True)
             return True
@@ -203,9 +236,12 @@ class ItemSpawnerCheat(CheatFeature):
                     self.mono.executor.call(self.get_type_native, prefab_ptr)
                 )
                 try:
-                    category = ItemCategory(raw_category)
+                    native_category = ItemCategory(raw_category)
                 except ValueError:
-                    category = ItemCategory.UNKNOWN
+                    native_category = ItemCategory.UNKNOWN
+                category = self._classify_item(
+                    item_id, spawn_key, native_category
+                )
 
                 is_quest_item = bool(
                     self.mono.executor.call(
@@ -244,9 +280,31 @@ class ItemSpawnerCheat(CheatFeature):
             count=len(self.catalog),
             failures=failures,
             lookup="GameInfo.GetSpawnable(System.Byte)",
+            category_counts={
+                category.name.lower(): sum(
+                    item.category == category for item in self.catalog
+                )
+                for category in ItemCategory
+            },
             items=[item.to_dict() for item in self.catalog],
         )
         return list(self.catalog)
+
+    @classmethod
+    def _classify_item(
+        cls,
+        item_id: int,
+        spawn_key: str,
+        native_category: ItemCategory,
+    ) -> ItemCategory:
+        """Classifies uninitialized prefabs using native data plus build layout."""
+        if native_category in {ItemCategory.FISH, ItemCategory.WEAPON}:
+            return native_category
+        if item_id in cls.FISH_ID_RANGE:
+            return ItemCategory.FISH
+        if spawn_key in cls.WEAPON_SPAWN_KEYS:
+            return ItemCategory.WEAPON
+        return native_category
 
     def select_item(self, item_id: int) -> Optional[SpawnableItem]:
         item = self.catalog_by_id.get(item_id)
@@ -278,8 +336,92 @@ class ItemSpawnerCheat(CheatFeature):
             )
         )
 
+    @staticmethod
+    def _build_main_thread_stub(
+        state_addr: int, managed_name: int, spawn_function: int
+    ) -> bytes:
+        """Builds a one-shot x64 thunk executed by ``Player.LateUpdate``."""
+        stub = bytearray()
+        stub.extend(b"\x48\xB8" + struct.pack("<Q", state_addr))
+        stub.extend(b"\x80\x38\x01")  # cmp byte ptr [rax], 1
+        stub.extend(b"\x75\x00")  # jne done
+        jump_displacement_index = len(stub) - 1
+        stub.extend(b"\xC6\x00\x02")  # mov byte ptr [rax], 2
+        stub.extend(b"\x48\x83\xEC\x28")  # shadow space + alignment
+        stub.extend(b"\x48\xB9" + struct.pack("<Q", managed_name))
+        stub.extend(b"\x31\xD2")  # xor edx, edx (spawnDead = false)
+        stub.extend(b"\x48\xB8" + struct.pack("<Q", spawn_function))
+        stub.extend(b"\xFF\xD0")  # call rax
+        stub.extend(b"\x48\x83\xC4\x28")
+        stub.extend(b"\x48\xB8" + struct.pack("<Q", state_addr))
+        stub.extend(b"\xC6\x00\x03")  # mov byte ptr [rax], 3
+        stub.extend(b"\xC3")
+        done_index = len(stub)
+        stub.extend(b"\xC3")
+        stub[jump_displacement_index] = (
+            done_index - (jump_displacement_index + 1)
+        ) & 0xFF
+        return bytes(stub)
+
+    def _dispatch_spawn_on_main_thread(self, managed_name: int) -> None:
+        """Runs Unity/FishNet spawning once from the game's main update thread."""
+        if (
+            not self.pm
+            or not self.mono
+            or not self.patcher
+            or not self.use_spawn_command_native
+            or not self.player_late_update_native
+            or not self.mono.executor.scratch_base
+        ):
+            raise RuntimeError("Main-thread spawn dispatcher is not prepared.")
+
+        state_addr = self.mono.executor.scratch_base + 0x2800
+        stub_addr = self.mono.executor.scratch_base + 0x3000
+        stub = self._build_main_thread_stub(
+            state_addr, managed_name, self.use_spawn_command_native
+        )
+        entry_jump = b"\x48\xB8" + struct.pack("<Q", stub_addr) + b"\xFF\xE0"
+        self.pm.write_bytes(stub_addr, stub, len(stub))
+        self.pm.write_uchar(state_addr, 1)
+
+        started = self._wait_clock()
+        self.patcher.patch_custom(
+            self.MAIN_THREAD_PATCH_ID,
+            self.player_late_update_native,
+            entry_jump,
+        )
+        try:
+            while True:
+                state = int(self.pm.read_uchar(state_addr))
+                if state == 3:
+                    return
+                if state not in {1, 2}:
+                    raise RuntimeError(
+                        f"Invalid main-thread dispatcher state: {state}"
+                    )
+                if self._wait_clock() - started >= self.MAIN_THREAD_TIMEOUT_SECONDS:
+                    raise TimeoutError(
+                        f"Unity main-thread spawn timed out in state {state}."
+                    )
+                self._sleeper(0.005)
+        finally:
+            self.patcher.restore(self.MAIN_THREAD_PATCH_ID)
+
     def spawn_selected(self) -> bool:
         """Spawns one selected item through DazedCommands and FishNet Spawn."""
+        if not self._spawn_lock.acquire(blocking=False):
+            self._set_action(
+                "spawner_cooldown", "A spawn request is already in progress."
+            )
+            self._record("spawn_rejected", reason="in_progress")
+            return False
+        try:
+            return self._spawn_selected_locked()
+        finally:
+            self._spawn_lock.release()
+
+    def _spawn_selected_locked(self) -> bool:
+        """Implements one serialized spawn request."""
         item = self.selected_item
         if not item:
             self._set_action(
@@ -314,10 +456,12 @@ class ItemSpawnerCheat(CheatFeature):
                 return False
 
             managed_name = self.mono.create_string(item.spawn_key)
+            gc_handle = self.mono.pin_object(managed_name)
             started = self._clock()
-            self.mono.executor.call(
-                self.use_spawn_command_native, managed_name, 0
-            )
+            try:
+                self._dispatch_spawn_on_main_thread(managed_name)
+            finally:
+                self.mono.free_gchandle(gc_handle)
             self._last_spawn_at = now
             self.is_enabled = True
             self._set_action(
@@ -329,6 +473,7 @@ class ItemSpawnerCheat(CheatFeature):
             self._record(
                 "spawn_invoked",
                 item=item.to_dict(),
+                dispatch="Player.LateUpdate",
                 duration_ms=round((self._clock() - started) * 1000, 3),
             )
             return True

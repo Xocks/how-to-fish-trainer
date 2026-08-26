@@ -211,9 +211,9 @@ public class MoneyManager : NetworkBehaviour {
 The item spawner deliberately reuses the game's developer-command path instead of constructing Unity or FishNet objects from raw memory:
 
 1. The bridge iterates Mono method metadata and selects `GameInfo.GetSpawnable(byte)` by its exact `System.Byte` parameter type before probing IDs `0..255`. This avoids the same-count `GetSpawnable(string)` overload.
-2. `Item.GetName()`, `UnityEngine.Object.get_name()`, `Item.get_Type()`, and `Item.get_IsQuestItem()` provide display, lookup, category, and risk metadata.
+2. `Item.GetName()`, `UnityEngine.Object.get_name()`, and `Item.get_IsQuestItem()` provide display, lookup, and risk metadata. Build 24911270 leaves the prefab-only, non-serialized `Item._type` at zero, so catalog classification falls back to the verified creature ID layout and weapon spawn keys.
 3. F7 displays the catalog and stores a validated selection. Quest and unknown items require a second confirmation.
-4. F8 verifies `NetworkBehaviour.IsServerInitialized`, creates a managed Mono string, and invokes `DazedCommands.UseSpawnCommand(name, false)`.
+4. F8 verifies `NetworkBehaviour.IsServerInitialized`, creates and pins a managed Mono string, then installs a one-shot gate on `Player.LateUpdate` so `DazedCommands.UseSpawnCommand(name, false)` runs on Unity's main thread. The original `LateUpdate` bytes are restored immediately after completion.
 5. The game command computes `Camera.CurCamera.position + Camera.CurCamera.forward * 2`, calls `Object.Instantiate`, then registers the result through FishNet `Server.Spawn`.
 
 This path is intentionally restricted to single-player and the host. A joined client does not own FishNet server authority and is rejected before invocation. A 500 ms cooldown limits accidental object floods. Runtime catalog pointers are discarded whenever the game disconnects and rebuilt after reattachment.

@@ -16,6 +16,14 @@ VirtualProtectEx.argtypes = [
     ctypes.POINTER(ctypes.c_uint32),
 ]
 
+FlushInstructionCache = kernel32.FlushInstructionCache
+FlushInstructionCache.restype = ctypes.c_bool
+FlushInstructionCache.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+]
+
 PAGE_EXECUTE_READWRITE = 0x40
 
 
@@ -43,6 +51,7 @@ class MemoryPatch:
 
         VirtualProtectEx(self.pm.process_handle, self.address, size, PAGE_EXECUTE_READWRITE, ctypes.byref(old_protect))
         self.pm.write_bytes(self.address, self.patch_bytes, size)
+        FlushInstructionCache(self.pm.process_handle, self.address, size)
         VirtualProtectEx(self.pm.process_handle, self.address, size, old_protect.value, ctypes.byref(old_protect))
 
         self.is_applied = True
@@ -58,6 +67,7 @@ class MemoryPatch:
 
         VirtualProtectEx(self.pm.process_handle, self.address, size, PAGE_EXECUTE_READWRITE, ctypes.byref(old_protect))
         self.pm.write_bytes(self.address, self.original_bytes, size)
+        FlushInstructionCache(self.pm.process_handle, self.address, size)
         VirtualProtectEx(self.pm.process_handle, self.address, size, old_protect.value, ctypes.byref(old_protect))
 
         self.is_applied = False

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0rc3 - 2026-08-27
+
+### Fixed
+
+- Dispatch `DazedCommands.UseSpawnCommand` from a one-shot
+  `Player.LateUpdate` main-thread gate instead of a remote worker thread.
+- Pin the managed spawn-key string until the main-thread call completes.
+- Classify the uninitialized prefab catalog using the verified Build 24911270
+  resource layout when the non-serialized `Item._type` remains at zero.
+- Include per-category totals and the main-thread dispatch route in diagnostics.
+
 ## 0.2.0rc2 - 2026-08-27
 
 ### Fixed
