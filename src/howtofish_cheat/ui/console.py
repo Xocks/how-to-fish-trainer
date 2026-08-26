@@ -6,7 +6,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.layout import Layout
-from ..features import CheatFeature, get_default_features
+from ..features import CheatFeature, ItemCategory, SpawnableItem, get_default_features
+from .selector import ItemSelectorState
 from ..i18n import tr
 
 
@@ -95,5 +96,83 @@ class TrainerUI:
         return Panel(
             content,
             border_style="cyan" if is_attached else "yellow",
+            padding=(1, 2),
+        )
+
+    def generate_item_selector(
+        self,
+        catalog: List[SpawnableItem],
+        state: ItemSelectorState,
+        language: str = "zh",
+    ) -> Panel:
+        """Renders one page of the item catalog and the numeric prompt."""
+        state.clamp_page(len(catalog))
+        start = state.page * state.page_size
+        visible_items = catalog[start : start + state.page_size]
+
+        table = Table(expand=True, show_lines=False)
+        table.add_column("ID", justify="right", style="bold cyan", width=5)
+        table.add_column(tr("selector_category", language), width=10)
+        table.add_column(tr("selector_item_name", language), style="bold white")
+        table.add_column(tr("selector_risk", language), justify="center", width=12)
+
+        category_names = {
+            ItemCategory.ITEM: tr("category_item", language),
+            ItemCategory.FISH: tr("category_fish", language),
+            ItemCategory.WEAPON: tr("category_weapon", language),
+            ItemCategory.UNKNOWN: tr("category_unknown", language),
+        }
+        for item in visible_items:
+            risky = item.is_quest_item or item.category == ItemCategory.UNKNOWN
+            risk_text = tr("selector_risky", language) if risky else ""
+            table.add_row(
+                str(item.id),
+                category_names[item.category],
+                Text(item.display_name),
+                risk_text,
+            )
+
+        total_pages = state.total_pages(len(catalog))
+        footer = Text()
+        footer.append(
+            tr(
+                "selector_page",
+                language,
+                current=state.page + 1,
+                total=total_pages,
+                count=len(catalog),
+            ),
+            style="dim",
+        )
+        footer.append("\n")
+
+        if state.pending_confirmation:
+            item = state.pending_confirmation
+            footer.append(
+                tr(
+                    "selector_confirm_special",
+                    language,
+                    item_id=item.id,
+                    item_name=item.display_name,
+                ),
+                style="bold red",
+            )
+        else:
+            footer.append(tr("selector_prompt", language), style="bold yellow")
+            footer.append(state.input_buffer or "_", style="bold cyan")
+            footer.append("\n")
+            footer.append(tr("selector_controls", language), style="dim")
+
+        if state.message_key:
+            footer.append("\n")
+            footer.append(
+                tr(state.message_key, language, **state.message_kwargs),
+                style="bold red",
+            )
+
+        return Panel(
+            Group(table, Text(""), footer),
+            title=tr("selector_title", language),
+            border_style="magenta",
             padding=(1, 2),
         )

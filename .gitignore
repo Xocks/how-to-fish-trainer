@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Workspace-local caches and diagnostics
+.work/
+.uv-cache/
+logs/
+test-artifacts/

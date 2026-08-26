@@ -9,6 +9,7 @@ from enum import IntEnum
 from typing import Callable, Dict, List, Optional
 
 from .base import CheatFeature
+from ..i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ class ItemSpawnerCheat(CheatFeature):
         self.catalog: List[SpawnableItem] = []
         self.selected_item: Optional[SpawnableItem] = None
         self.last_action_message = ""
+        self.last_action_key = ""
+        self.last_action_kwargs: dict = {}
         self._event_sink = event_sink
         self._clock = clock
         self._last_spawn_at = float("-inf")
@@ -90,6 +93,16 @@ class ItemSpawnerCheat(CheatFeature):
                 self._event_sink(event, data)
             except Exception:
                 logger.debug("Failed to write item spawner diagnostic event", exc_info=True)
+
+    def _set_action(self, key: str, fallback: str, **kwargs) -> None:
+        self.last_action_key = key
+        self.last_action_kwargs = kwargs
+        self.last_action_message = fallback
+
+    def get_action_message(self, language: str = "en") -> str:
+        if not self.last_action_key:
+            return self.last_action_message
+        return tr(self.last_action_key, language, **self.last_action_kwargs)
 
     def _compile(self, class_ptr: int, method_name: str, param_count: int) -> int:
         method = self.mono.find_method(class_ptr, method_name, param_count)
@@ -131,7 +144,11 @@ class ItemSpawnerCheat(CheatFeature):
             return True
         except Exception as exc:
             logger.error("Failed to prepare Item Spawner: %s", exc)
-            self.last_action_message = f"Item spawner initialization failed: {exc}"
+            self._set_action(
+                "spawner_init_failed",
+                f"Item spawner initialization failed: {exc}",
+                error=str(exc),
+            )
             self._record("spawner_prepared", success=False, error=str(exc))
             return False
 
@@ -201,7 +218,11 @@ class ItemSpawnerCheat(CheatFeature):
         self.catalog = sorted(discovered, key=lambda item: (order[item.category], item.id))
         if self.selected_item and self.selected_item.id not in self.catalog_by_id:
             self.selected_item = None
-        self.last_action_message = f"Loaded {len(self.catalog)} spawnable items."
+        self._set_action(
+            "spawner_catalog_loaded",
+            f"Loaded {len(self.catalog)} spawnable items.",
+            count=len(self.catalog),
+        )
         self._record(
             "catalog_loaded",
             count=len(self.catalog),
@@ -214,7 +235,12 @@ class ItemSpawnerCheat(CheatFeature):
         item = self.catalog_by_id.get(item_id)
         if item:
             self.selected_item = item
-            self.last_action_message = f"Selected ID {item.id}: {item.display_name}"
+            self._set_action(
+                "spawner_selected",
+                f"Selected ID {item.id}: {item.display_name}",
+                item_id=item.id,
+                item_name=item.display_name,
+            )
             self._record("item_selected", item=item.to_dict())
         return item
 
@@ -239,23 +265,32 @@ class ItemSpawnerCheat(CheatFeature):
         """Spawns one selected item through DazedCommands and FishNet Spawn."""
         item = self.selected_item
         if not item:
-            self.last_action_message = "Select an item with F7 first."
+            self._set_action(
+                "spawner_no_selection", "Select an item with F7 first."
+            )
             self._record("spawn_rejected", reason="no_selection")
             return False
         if not self.pm or not self.mono or not self.use_spawn_command_native:
-            self.last_action_message = "Item spawner is not attached to the game."
+            self._set_action(
+                "spawner_not_attached", "Item spawner is not attached to the game."
+            )
             self._record("spawn_rejected", reason="not_attached", item=item.to_dict())
             return False
 
         now = self._clock()
         if now - self._last_spawn_at < self.SPAWN_COOLDOWN_SECONDS:
-            self.last_action_message = "Spawn cooldown active; please wait."
+            self._set_action(
+                "spawner_cooldown", "Spawn cooldown active; please wait."
+            )
             self._record("spawn_rejected", reason="cooldown", item=item.to_dict())
             return False
 
         try:
             if not self.is_server_authorized():
-                self.last_action_message = "Item spawning is limited to single-player or the host."
+                self._set_action(
+                    "spawner_not_server",
+                    "Item spawning is limited to single-player or the host.",
+                )
                 self._record(
                     "spawn_rejected", reason="not_server", item=item.to_dict()
                 )
@@ -268,7 +303,12 @@ class ItemSpawnerCheat(CheatFeature):
             )
             self._last_spawn_at = now
             self.is_enabled = True
-            self.last_action_message = f"Spawned ID {item.id}: {item.display_name}"
+            self._set_action(
+                "spawner_spawned",
+                f"Spawned ID {item.id}: {item.display_name}",
+                item_id=item.id,
+                item_name=item.display_name,
+            )
             self._record(
                 "spawn_invoked",
                 item=item.to_dict(),
@@ -277,7 +317,11 @@ class ItemSpawnerCheat(CheatFeature):
             return True
         except Exception as exc:
             logger.error("Failed to spawn item ID %s: %s", item.id, exc)
-            self.last_action_message = f"Item spawn failed: {exc}"
+            self._set_action(
+                "spawner_spawn_failed",
+                f"Item spawn failed: {exc}",
+                error=str(exc),
+            )
             self._record(
                 "spawn_failed", item=item.to_dict(), error=str(exc)
             )

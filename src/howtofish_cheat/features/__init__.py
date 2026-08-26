@@ -8,6 +8,7 @@ from .jump import InfiniteJumpCheat
 from .ammo import UnlimitedAmmoCheat
 from .damage import DamageMultiplierCheat
 from .money import AddMoneyCheat
+from .spawner import ItemCategory, ItemSpawnerCheat, SpawnableItem
 
 
 def get_default_features() -> List[CheatFeature]:
@@ -19,6 +20,7 @@ def get_default_features() -> List[CheatFeature]:
         UnlimitedAmmoCheat(),
         DamageMultiplierCheat(),
         AddMoneyCheat(),
+        ItemSpawnerCheat(),
     ]
 
 
@@ -30,6 +32,9 @@ __all__ = [
     "UnlimitedAmmoCheat",
     "DamageMultiplierCheat",
     "AddMoneyCheat",
+    "ItemCategory",
+    "ItemSpawnerCheat",
+    "SpawnableItem",
     "get_default_features",
 ]
 
