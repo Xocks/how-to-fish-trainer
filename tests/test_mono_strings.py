@@ -58,3 +58,43 @@ def test_read_managed_string_decodes_utf16_and_checks_limit():
 
     with pytest.raises(ValueError):
         bridge.read_string(0x1234, max_chars=2)
+
+
+def test_find_method_by_signature_disambiguates_same_count_overloads():
+    bridge = MonoBridge.__new__(MonoBridge)
+    bridge.exports = {
+        "mono_class_get_methods": 0x100,
+        "mono_method_get_name": 0x200,
+        "mono_method_signature": 0x300,
+        "mono_signature_get_param_count": 0x400,
+        "mono_signature_get_params": 0x500,
+        "mono_type_get_type": 0x600,
+    }
+    bridge.executor = MagicMock()
+    bridge.executor.scratch_base = 0x10000
+    bridge.pm = MagicMock()
+    bridge._read_utf8_c_string = MagicMock(return_value="GetSpawnable")
+
+    methods = iter([0xA000, 0xB000])
+
+    def call(func, *args):
+        if func == 0x100:
+            return next(methods)
+        if func == 0x200:
+            return {0xA000: 0xA100, 0xB000: 0xB100}[args[0]]
+        if func == 0x300:
+            return {0xA000: 0xA200, 0xB000: 0xB200}[args[0]]
+        if func == 0x400:
+            return 1
+        if func == 0x500:
+            return {0xA200: 0xA300, 0xB200: 0xB300}[args[0]]
+        if func == 0x600:
+            return {0xA300: 0x0E, 0xB300: MonoBridge.MONO_TYPE_U1}[args[0]]
+        raise AssertionError((func, args))
+
+    bridge.executor.call.side_effect = call
+
+    assert bridge.find_method_by_signature(
+        0x9000, "GetSpawnable", (MonoBridge.MONO_TYPE_U1,)
+    ) == 0xB000
+    assert bridge.pm.write_ulonglong.call_count == 3

@@ -57,6 +57,22 @@ def test_catalog_scan_reads_names_categories_and_quest_flags():
     assert cheat.select_item(99) is None
 
 
+def test_prepare_resolves_the_byte_get_spawnable_overload():
+    mono = MagicMock()
+    mono.MONO_TYPE_U1 = 0x05
+    mono.find_class.side_effect = range(0x1000, 0x1006)
+    mono.find_method.return_value = 0x2000
+    mono.find_method_by_signature.return_value = 0x2100
+    mono.compile_method.side_effect = lambda method: method + 0x100
+    cheat = ItemSpawnerCheat(pm=MagicMock(), mono=mono, patcher=MagicMock())
+
+    assert cheat.prepare() is True
+    mono.find_method_by_signature.assert_called_once_with(
+        0x1000, "GetSpawnable", (0x05,)
+    )
+    assert cheat.get_spawnable_native == 0x2200
+
+
 def test_spawn_requires_selection_attachment_and_server_authority():
     cheat = _catalog_cheat()
     assert cheat.spawn_selected() is False

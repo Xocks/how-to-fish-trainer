@@ -2,7 +2,7 @@
 
 import os
 import struct
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 import pefile
 import pymem
 import pymem.process
@@ -12,6 +12,11 @@ from .remote import RemoteExecutor
 
 class MonoBridge:
     """Dissects and interacts with Unity Mono runtime inside the target process."""
+
+    # MonoTypeEnum values from Mono's metadata API.  Keeping the byte type here
+    # avoids confusing one-parameter overloads such as GetSpawnable(string)
+    # and GetSpawnable(byte).
+    MONO_TYPE_U1 = 0x05
 
     def __init__(self, pm: pymem.Pymem, mono_module_name: str = "mono-2.0-bdwgc.dll"):
         self.pm = pm
@@ -171,6 +176,90 @@ class MonoBridge:
             raise RuntimeError(f"Method '{method_name}' (params: {param_count}) not found on class 0x{class_ptr:X}")
 
         return method_ptr
+
+    def _read_utf8_c_string(self, address: int, max_bytes: int = 512) -> str:
+        """Reads a bounded null-terminated UTF-8 string from the target."""
+        if not address:
+            return ""
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be greater than zero.")
+
+        raw = bytearray()
+        for offset in range(max_bytes):
+            value = self.pm.read_bytes(address + offset, 1)
+            if value == b"\x00":
+                return raw.decode("utf-8", errors="replace")
+            raw.extend(value)
+        raise ValueError(
+            f"Remote UTF-8 string at 0x{address:X} exceeds {max_bytes} bytes."
+        )
+
+    def find_method_by_signature(
+        self,
+        class_ptr: int,
+        method_name: str,
+        param_type_codes: Sequence[int],
+    ) -> int:
+        """Finds a Mono method by name and exact ``MonoTypeEnum`` parameters.
+
+        ``mono_class_get_method_from_name`` only distinguishes overloads by
+        parameter count.  This iterator additionally inspects every parameter
+        type so same-count overloads cannot be selected accidentally.
+        """
+        if not self.executor.scratch_base:
+            raise RuntimeError("Scratch buffer is not allocated.")
+
+        expected_types = tuple(int(code) for code in param_type_codes)
+        get_methods_fn = self.get_export("mono_class_get_methods")
+        get_name_fn = self.get_export("mono_method_get_name")
+        get_signature_fn = self.get_export("mono_method_signature")
+        get_param_count_fn = self.get_export("mono_signature_get_param_count")
+        get_params_fn = self.get_export("mono_signature_get_params")
+        get_type_fn = self.get_export("mono_type_get_type")
+
+        method_iter_addr = self.executor.scratch_base + 0x1600
+        param_iter_addr = self.executor.scratch_base + 0x1608
+        self.pm.write_ulonglong(method_iter_addr, 0)
+
+        while True:
+            method_ptr = self.executor.call(
+                get_methods_fn, class_ptr, method_iter_addr
+            )
+            if not method_ptr:
+                break
+
+            name_ptr = self.executor.call(get_name_fn, method_ptr)
+            if self._read_utf8_c_string(name_ptr) != method_name:
+                continue
+
+            signature_ptr = self.executor.call(get_signature_fn, method_ptr)
+            if not signature_ptr:
+                continue
+            param_count = int(
+                self.executor.call(get_param_count_fn, signature_ptr)
+            )
+            if param_count != len(expected_types):
+                continue
+
+            self.pm.write_ulonglong(param_iter_addr, 0)
+            actual_types = []
+            for _ in range(param_count):
+                type_ptr = self.executor.call(
+                    get_params_fn, signature_ptr, param_iter_addr
+                )
+                if not type_ptr:
+                    actual_types = []
+                    break
+                actual_types.append(int(self.executor.call(get_type_fn, type_ptr)))
+
+            if tuple(actual_types) == expected_types:
+                return method_ptr
+
+        signature = ", ".join(f"0x{code:02X}" for code in expected_types)
+        raise RuntimeError(
+            f"Method '{method_name}' (types: [{signature}]) not found "
+            f"on class 0x{class_ptr:X}"
+        )
 
     def compile_method(self, method_ptr: int) -> int:
         """JIT compiles a Mono method and returns its native code entry point."""

@@ -104,8 +104,19 @@ class ItemSpawnerCheat(CheatFeature):
             return self.last_action_message
         return tr(self.last_action_key, language, **self.last_action_kwargs)
 
-    def _compile(self, class_ptr: int, method_name: str, param_count: int) -> int:
-        method = self.mono.find_method(class_ptr, method_name, param_count)
+    def _compile(
+        self,
+        class_ptr: int,
+        method_name: str,
+        param_count: int,
+        param_type_codes: Optional[tuple[int, ...]] = None,
+    ) -> int:
+        if param_type_codes is None:
+            method = self.mono.find_method(class_ptr, method_name, param_count)
+        else:
+            method = self.mono.find_method_by_signature(
+                class_ptr, method_name, param_type_codes
+            )
         return self.mono.compile_method(method)
 
     def prepare(self) -> bool:
@@ -124,7 +135,12 @@ class ItemSpawnerCheat(CheatFeature):
                 "FishNet.Runtime", "NetworkBehaviour", "FishNet.Object"
             )
 
-            self.get_spawnable_native = self._compile(game_info_cls, "GetSpawnable", 1)
+            self.get_spawnable_native = self._compile(
+                game_info_cls,
+                "GetSpawnable",
+                1,
+                (self.mono.MONO_TYPE_U1,),
+            )
             self.get_display_name_native = self._compile(item_cls, "GetName", 0)
             self.get_object_name_native = self._compile(unity_object_cls, "get_name", 0)
             self.get_type_native = self._compile(item_cls, "get_Type", 0)
@@ -227,6 +243,7 @@ class ItemSpawnerCheat(CheatFeature):
             "catalog_loaded",
             count=len(self.catalog),
             failures=failures,
+            lookup="GameInfo.GetSpawnable(System.Byte)",
             items=[item.to_dict() for item in self.catalog],
         )
         return list(self.catalog)

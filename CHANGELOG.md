@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0rc2 - 2026-08-27
+
+### Fixed
+
+- Resolve `GameInfo.GetSpawnable(System.Byte)` by its exact Mono parameter
+  type instead of accidentally selecting the same-count `System.String`
+  overload, which caused F7 catalog scans to return zero items in-game.
+- Record the exact catalog lookup signature in diagnostic events.
+
 ## 0.2.0rc1 - 2026-08-27
 
 ### Added

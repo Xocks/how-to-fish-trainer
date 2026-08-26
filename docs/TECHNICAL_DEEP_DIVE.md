@@ -210,7 +210,7 @@ public class MoneyManager : NetworkBehaviour {
 
 The item spawner deliberately reuses the game's developer-command path instead of constructing Unity or FishNet objects from raw memory:
 
-1. `GameInfo.GetSpawnable(byte)` probes the runtime registry for IDs `0..255`.
+1. The bridge iterates Mono method metadata and selects `GameInfo.GetSpawnable(byte)` by its exact `System.Byte` parameter type before probing IDs `0..255`. This avoids the same-count `GetSpawnable(string)` overload.
 2. `Item.GetName()`, `UnityEngine.Object.get_name()`, `Item.get_Type()`, and `Item.get_IsQuestItem()` provide display, lookup, category, and risk metadata.
 3. F7 displays the catalog and stores a validated selection. Quest and unknown items require a second confirmation.
 4. F8 verifies `NetworkBehaviour.IsServerInitialized`, creates a managed Mono string, and invokes `DazedCommands.UseSpawnCommand(name, false)`.
