@@ -6,6 +6,8 @@
 
 基于 `pymem` 与底层 Mono Runtime C API 互操作实现 JIT 函数 Hook / 机器码补丁，并提供 `rich` 现代化交互式终端控制面板，支持中英文双语无缝切换与免 Python 单文件 `.exe` 运行。
 
+> **v0.2.0 RC：** 物品生成器已经通过自动化测试，但正式发布 v0.2.0 前仍需要在当前 Steam 版本中完成真实游戏验证。
+
 ---
 
 ## 功能特性
@@ -18,6 +20,8 @@
 | **F4** | **无限弹药** | 所有枪械无限备弹与弹匣容量，射击不消耗子弹，无需频繁换弹。 |
 | **F5** | **伤害倍率** | 循环切换枪械、近战武器与徒手拳头的伤害倍率：**`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `一击必杀 (99999)`**。 |
 | **F6** | **增加金币 (+1w)** | 每次按下立即增加 **+$10,000 (1万)** 金币，附带金币音效、飘字动画与 HUD 数字滚动效果，并同步至联机网络。 |
+| **F7** | **选择生成物品** | 打开运行时自动读取的物品目录，输入物品 ID；任务或未知物品需要二次确认。 |
+| **F8** | **生成当前物品** | 在相机前方约 2 米生成一个当前物品，仅支持单人游戏或房主。 |
 | **F12** | **切换语言** | 随时在中英文界面之间切换：**中文 (ZH)** 与 **English (EN)**。 |
 | **F10 / ESC** | **安全退出** | 自动还原所有已修改的机器码指令与内存基准值，无残留安全退出。 |
 
@@ -37,6 +41,7 @@
    - **无限弹药 (`F4`)**：对 `Weapon.set_Ammo` 写入 `RET` (`0xC3`) 指令，并在内存中锁定弹匣容量为 `999` 及重置换弹标记。
    - **伤害倍率 (`F5`)**：实时动态缩放 `PlayerPunching._damage`、`Melee._sharpnessUpgrades` 数组、`Attachments._bulletUpgrades` 数组以及 `WeaponInfo.ProjectileDamage`（1x, 2x, 5x, 10x, 99999x）。
    - **增加金币 (`F6`)**：直接写入权威静态字段 `<Money>k__BackingField` 与 FishNet `SyncVar<int> _money`，触发 `PlayerUI.SetMoney` 播放飘字动画，并调用 `MoneyManager.MoneySound` 播放拾取音效。
+   - **物品生成器 (`F7` / `F8`)**：通过 `GameInfo.GetSpawnable(byte)` 枚举 ID 并读取原生物品信息，再调用 `DazedCommands.UseSpawnCommand`，让 Unity 实例化和 FishNet `Server.Spawn` 沿用游戏自身生命周期；普通联机客户端会被拒绝。
    - **安全还原**：关闭功能或退出修改器时，自动恢复原始机器码字节与伤害基准值。
 
 3. **现代化终端 UI (`howtofish_cheat.ui.console`)**：
@@ -73,8 +78,22 @@ uv run pytest -v
 - 按 **F4** 开关 **无限弹药**
 - 按 **F5** 循环切换 **伤害倍率** (`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `一击必杀`)
 - 按 **F6** 立即 **增加金币 (+1w / +$10,000)**
+- 按 **F7** 打开物品目录，输入 ID 并确认当前物品
+- 按 **F8** 在单人游戏或房主模式中生成一个当前物品
 - 按 **F12** 随时 **切换语言 (中文 / English)**
 - 按 **F10** / **ESC** / **Ctrl+C** 安全退出修改器
+
+### 3. 物品生成器测试与诊断
+
+首次测试请使用新建的临时存档。先在单人模式分别验证一条鱼和一把枪，再用第二个客户端验证房主生成后的可见性与拾取同步。任务或未知物品虽然会显示，但因可能影响任务或存档，必须二次确认。
+
+测试结束后，可在 `test-artifacts/` 中生成脱敏诊断包：
+
+```powershell
+uv run python -m howtofish_cheat.diagnostics collect
+```
+
+诊断包包含最新的训练器 JSONL 日志和仓库版本信息，不包含存档、完整 Unity 日志、聊天内容或凭据。
 
 ---
 

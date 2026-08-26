@@ -6,6 +6,8 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
+> **v0.2.0 RC:** The item spawner has automated test coverage but still requires in-game validation on the current Steam build before a final v0.2.0 release.
+
 ---
 
 ## Features
@@ -18,6 +20,8 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
 | **F4** | **Unlimited Ammo** | Infinite ammunition for all firearms without magazine depletion or forced reloads. |
 | **F5** | **Damage Multiplier** | Cycles damage multiplier for firearms, melee weapons, and fists: **`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot Kill (99999)`**. |
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
+| **F7** | **Select Spawn Item** | Opens the runtime-discovered item catalog, accepts an item ID, and requires confirmation for quest/unknown items. |
+| **F8** | **Spawn Selected Item** | Spawns one selected item about two metres in front of the camera. Limited to single-player or the host. |
 | **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
 | **F10** | **Safe Exit** | Restores all modified code/memory and exits the trainer safely. |
 
@@ -36,6 +40,7 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
    - **Unlimited Ammo (`F4`)**: JIT-patches `Weapon.set_Ammo` with `RET` (`0xC3`) and actively locks magazine capacity to `999` while resetting reload flags.
    - **Damage Multiplier (`F5`)**: Pure real-time in-memory scaling across `PlayerPunching._damage`, `Melee._sharpnessUpgrades` array, `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage` (1x, 2x, 5x, 10x, One-Shot Kill).
    - **Add Money (`F6`)**: Directly updates authoritative static `<Money>k__BackingField` and FishNet `SyncVar<int> _money`, invokes `PlayerUI.SetMoney` for floating `+$10000` text + HUD animated roll, and calls `MoneyManager.MoneySound` for audio feedback.
+   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through `GameInfo.GetSpawnable(byte)`, reads native item metadata, and invokes `DazedCommands.UseSpawnCommand` so Unity instantiation and FishNet `Server.Spawn` follow the game's own lifecycle. Joined clients are rejected.
    - Disabling any cheat or exiting cleanly restores original machine code bytes and base values.
 3. **Interactive Console UI (`howtofish_cheat.ui.console`)**:
    - Live status display with connection status, active PID, Mono domain pointer, and real-time cheat states.
@@ -68,8 +73,22 @@ uv run pytest -v
 - Press **F4** to toggle **Unlimited Ammo**.
 - Press **F5** to cycle **Damage Multiplier** (`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot`).
 - Press **F6** to **Add Money (+1w / +$10,000)** on press.
+- Press **F7** to open the item catalog, enter an ID, and confirm the selection.
+- Press **F8** to spawn one selected item in single-player or while hosting.
 - Press **F12** to **Switch Language (中文 / EN)** at any time.
 - Press **F10** or **Ctrl+C** to cleanly exit the trainer.
+
+### 3. Item Spawner Validation and Diagnostics
+
+Use a new disposable save for initial testing. Verify one fish and one firearm in single-player first, then test host synchronization with a second client. Quest or unknown items are visible but require a second confirmation because they may affect progression or saves.
+
+After testing, create a sanitized support bundle inside `test-artifacts/`:
+
+```powershell
+uv run python -m howtofish_cheat.diagnostics collect
+```
+
+The bundle contains the latest trainer JSONL log and repository metadata. It does not include saves, full Unity logs, chat, or credentials.
 
 ---
 
