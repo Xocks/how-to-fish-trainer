@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0rc5 - 2026-08-27
+
+### Fixed
+
+- Release the pinned spawn-key GC handle inside the Unity main-thread thunk,
+  immediately after `DazedCommands.UseSpawnCommand` returns. This removes the
+  post-spawn remote-thread call to `mono_gchandle_free` that timed out in the
+  RC4 diagnostic and preceded the game process exit.
+- Record the GC-handle cleanup route when the main-thread dispatcher is armed.
+
 ## 0.2.0rc4 - 2026-08-27
 
 ### Fixed

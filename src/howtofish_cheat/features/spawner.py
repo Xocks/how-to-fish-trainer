@@ -108,6 +108,7 @@ class ItemSpawnerCheat(CheatFeature):
         self.get_type_native: Optional[int] = None
         self.get_is_quest_item_native: Optional[int] = None
         self.use_spawn_command_native: Optional[int] = None
+        self.free_gchandle_native: Optional[int] = None
         self.get_server_instance_native: Optional[int] = None
         self.get_is_server_initialized_native: Optional[int] = None
         self.player_late_update_native: Optional[int] = None
@@ -180,6 +181,7 @@ class ItemSpawnerCheat(CheatFeature):
             self.use_spawn_command_native = self._compile(
                 commands_cls, "UseSpawnCommand", 2
             )
+            self.free_gchandle_native = self.mono.get_export("mono_gchandle_free")
             self.get_server_instance_native = self._compile(
                 server_cls, "get_Instance", 0
             )
@@ -338,9 +340,19 @@ class ItemSpawnerCheat(CheatFeature):
 
     @staticmethod
     def _build_main_thread_stub(
-        state_addr: int, managed_name: int, spawn_function: int
+        state_addr: int,
+        managed_name: int,
+        spawn_function: int,
+        gc_handle: int,
+        free_gchandle_function: int,
     ) -> bytes:
-        """Builds a one-shot x64 thunk executed by ``Player.LateUpdate``."""
+        """Builds a one-shot x64 thunk executed by ``Player.LateUpdate``.
+
+        The pinned string is released on Unity's already Mono-attached main
+        thread. Starting a second remote Mono thread immediately after the
+        spawn can deadlock in ``mono_gchandle_free`` while Unity is completing
+        the network-object lifecycle.
+        """
         stub = bytearray()
         stub.extend(b"\x48\xB8" + struct.pack("<Q", state_addr))
         stub.extend(b"\x80\x38\x01")  # cmp byte ptr [rax], 1
@@ -352,6 +364,9 @@ class ItemSpawnerCheat(CheatFeature):
         stub.extend(b"\x31\xD2")  # xor edx, edx (spawnDead = false)
         stub.extend(b"\x48\xB8" + struct.pack("<Q", spawn_function))
         stub.extend(b"\xFF\xD0")  # call rax
+        stub.extend(b"\x48\xB9" + struct.pack("<Q", gc_handle))
+        stub.extend(b"\x48\xB8" + struct.pack("<Q", free_gchandle_function))
+        stub.extend(b"\xFF\xD0")  # free handle on the attached main thread
         stub.extend(b"\x48\x83\xC4\x28")
         stub.extend(b"\x48\xB8" + struct.pack("<Q", state_addr))
         stub.extend(b"\xC6\x00\x03")  # mov byte ptr [rax], 3
@@ -371,22 +386,30 @@ class ItemSpawnerCheat(CheatFeature):
         ) & 0xFF
         return bytes(stub)
 
-    def _dispatch_spawn_on_main_thread(self, managed_name: int) -> None:
+    def _dispatch_spawn_on_main_thread(
+        self, managed_name: int, gc_handle: int
+    ) -> None:
         """Runs Unity/FishNet spawning once from the game's main update thread."""
         if (
             not self.pm
             or not self.mono
             or not self.patcher
             or not self.use_spawn_command_native
+            or not self.free_gchandle_native
             or not self.player_late_update_native
             or not self.mono.executor.scratch_base
+            or not gc_handle
         ):
             raise RuntimeError("Main-thread spawn dispatcher is not prepared.")
 
         state_addr = self.mono.executor.scratch_base + 0x2800
         stub_addr = self.mono.executor.scratch_base + 0x3000
         stub = self._build_main_thread_stub(
-            state_addr, managed_name, self.use_spawn_command_native
+            state_addr,
+            managed_name,
+            self.use_spawn_command_native,
+            gc_handle,
+            self.free_gchandle_native,
         )
         entry_jump = b"\x48\xB8" + struct.pack("<Q", stub_addr) + b"\xFF\xE0"
         original_prefix = self.pm.read_bytes(
@@ -400,6 +423,7 @@ class ItemSpawnerCheat(CheatFeature):
             "spawn_dispatch_armed",
             target=f"0x{self.player_late_update_native:X}",
             original_prefix=original_prefix,
+            handle_cleanup="unity_main_thread",
         )
         self.patcher.patch_custom(
             self.MAIN_THREAD_PATCH_ID,
@@ -497,10 +521,7 @@ class ItemSpawnerCheat(CheatFeature):
             managed_name = self.mono.create_string(item.spawn_key)
             gc_handle = self.mono.pin_object(managed_name)
             started = self._clock()
-            try:
-                self._dispatch_spawn_on_main_thread(managed_name)
-            finally:
-                self.mono.free_gchandle(gc_handle)
+            self._dispatch_spawn_on_main_thread(managed_name, gc_handle)
             self._last_spawn_at = now
             self.is_enabled = True
             self._set_action(
