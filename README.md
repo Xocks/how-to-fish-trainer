@@ -1,12 +1,40 @@
-# How to Fish (渔力全开) - Memory Trainer
+# How to Fish (渔力全开) - Xocks Item Spawner Edition
 
 [English](README.md) | [简体中文](README_zh.md)
 
 An external Python-based trainer and cheat engine for the Unity Mono game **[How to Fish (渔力全开)](https://store.steampowered.com/)**.
 
+> [!IMPORTANT]
+> This is a **community fork maintained by Xocks**, developed from commit
+> `688a9c9` of
+> **[fredwangwang/how-to-fish-trainer](https://github.com/fredwangwang/how-to-fish-trainer)**.
+> It is not an official update published by the original author. The upstream
+> copyright notice and MIT license are preserved.
+
+- **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
+- **Development branch:** [`feat/item-spawner-v0.2.0`](https://github.com/Xocks/how-to-fish-trainer/tree/feat/item-spawner-v0.2.0)
+- **Current test tag:** [`v0.2.0-rc.8`](https://github.com/Xocks/how-to-fish-trainer/tree/v0.2.0-rc.8)
+
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
 > **v0.2.0 RC:** The item spawner has automated test coverage but still requires in-game validation on the current Steam build before a final v0.2.0 release.
+
+---
+
+## What This Fork Adds
+
+Compared with the upstream baseline, this branch adds:
+
+| Modification | Description |
+| :--- | :--- |
+| **F7 runtime item catalog** | Scans the game's own `GameInfo.GetSpawnable(byte)` catalog and reads IDs, display names, spawn keys, categories, and quest flags. The catalog is rebuilt after reconnecting. |
+| **F8 native item spawning** | Calls `DazedCommands.UseSpawnCommand` to spawn the selected item about two metres in front of the camera. It is restricted to single-player or the host and has a 500ms cooldown. |
+| **Special-item safeguards** | Quest and unknown items receive a red `!` marker and require a second confirmation. |
+| **Crash fixes** | Dispatches spawning on Unity's main thread, uses a two-way restoration handshake, and retains pinned Mono command strings for the current game process to avoid the identified cleanup-timing crashes. |
+| **Responsive selector UI** | Uses four `ID / Item` pairs on wide terminals, automatically reduces columns on narrow windows, uses available height for larger pages, and redraws cleanly after resizing. |
+| **Diagnostics and tests** | Adds sanitized support bundles, a one-shot `spawn_probe`, and automated coverage for catalog scanning, selector input, authority checks, cooldowns, reconnects, and main-thread restoration. |
+
+This remains an external process-memory trainer. It does not replace game files and is not installed as a mod. Treat the item spawner as an RC feature and test it with a disposable save in single-player or as the host.
 
 ---
 
@@ -110,3 +138,12 @@ The bundle contains the latest trainer JSONL log and repository metadata. It doe
 For an in-depth breakdown of the reverse engineering, FishNet network architecture, Mono runtime TLS internals, JIT trampolines, and gotchas, see:
 
 📖 **[Technical Deep Dive & Architecture Documentation](docs/TECHNICAL_DEEP_DIVE.md)**
+
+---
+
+## Credits and License
+
+- **Upstream project:** [fredwangwang/how-to-fish-trainer](https://github.com/fredwangwang/how-to-fish-trainer)
+- **Modified edition:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
+- The project remains under the repository's [MIT License](LICENSE). Keep the original copyright and license notice when redistributing source code or binaries.
+- This project is not affiliated with or endorsed by the game developer, publisher, Steam, or Valve.

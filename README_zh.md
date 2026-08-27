@@ -1,12 +1,43 @@
-# 渔力全开 (How to Fish) - 内存修改器
+# 渔力全开 (How to Fish) - Xocks 物品生成改版
 
 [English](README.md) | [简体中文](README_zh.md)
 
 专为 Unity Mono 引擎游戏 **[渔力全开 (How to Fish)](https://store.steampowered.com/)** 打造的外部内存修改器与辅助工具。
 
+> [!IMPORTANT]
+> 这是 **Xocks 维护的社区改版**，基于
+> **[fredwangwang/how-to-fish-trainer](https://github.com/fredwangwang/how-to-fish-trainer)**
+> 的 `688a9c9` 版本继续开发，并非原作者发布的官方新版。原项目版权与
+> MIT 许可声明均予以保留。
+
+- **改版仓库：** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
+- **当前开发分支：** [`feat/item-spawner-v0.2.0`](https://github.com/Xocks/how-to-fish-trainer/tree/feat/item-spawner-v0.2.0)
+- **当前测试标签：** [`v0.2.0-rc.8`](https://github.com/Xocks/how-to-fish-trainer/tree/v0.2.0-rc.8)
+
 基于 `pymem` 与底层 Mono Runtime C API 互操作实现 JIT 函数 Hook / 机器码补丁，并提供 `rich` 现代化交互式终端控制面板，支持中英文双语无缝切换与免 Python 单文件 `.exe` 运行。
 
 > **v0.2.0 RC：** 物品生成器已经通过自动化测试，但正式发布 v0.2.0 前仍需要在当前 Steam 版本中完成真实游戏验证。
+
+---
+
+## 这个改版新增了什么
+
+相对原版，本分支主要加入以下功能与稳定性改进：
+
+| 改版内容 | 说明 |
+| :--- | :--- |
+| **F7 运行时物品目录** | 通过游戏自己的 `GameInfo.GetSpawnable(byte)` 扫描可生成物品，读取 ID、名称、生成键、类别和任务物品标记。游戏重连后重新扫描，不复用旧 Mono 指针。 |
+| **F8 原生物品生成** | 调用游戏原生 `DazedCommands.UseSpawnCommand`，在相机前方约 2 米生成当前物品；限制为单人游戏或房主，并带有 500ms 防连点。 |
+| **特殊物品保护** | 任务物品和未知物品显示红色 `!`，必须再次确认，降低误操作风险。 |
+| **崩溃修复** | 生成调用被调度到 Unity 主线程；加入双向恢复握手，并让固定的 Mono 字符串在当前游戏进程生命周期内安全缓存，避免已定位的释放时序崩溃。 |
+| **响应式物品 UI** | 大窗口每行显示四组“ID / 物品”并利用可用高度增加每页容量；窄窗口自动降为三、二或一组，缩放后整屏重绘。 |
+| **诊断与测试工具** | 新增脱敏诊断包、单次 `spawn_probe` 集成探针，以及目录、选择器、权限、限速、重连和主线程恢复等自动化测试。 |
+
+这仍是外部进程内存修改器：不替换游戏文件，也不是安装到游戏目录的 Mod。物品生成器当前为 RC 测试功能，请优先在临时存档、单人游戏或房主环境中使用。
+
+准备录制介绍视频时，可直接使用：
+
+🎬 **[视频标题、简介与演示文案](docs/VIDEO_DESCRIPTION_ZH.md)**
 
 ---
 
@@ -54,7 +85,7 @@
 ### 1. 获取并运行修改器
 
 #### 方式 A：直接下载预编译独立可执行程序（推荐）
-从 **[GitHub Releases](https://github.com/fredwangwang/how-to-fish-trainer/releases)** 下载最新的 `HowToFishTrainer.exe` 单文件版本，双击即可运行（无需安装 Python 或任何依赖环境）。
+从 **[Xocks 改版 Releases](https://github.com/Xocks/how-to-fish-trainer/releases)** 下载带有 `Xocks` 或 `v0.2.0` 标识的改版构建。不要把原作者仓库中的旧版本误认为包含 F7/F8 物品生成器。单文件 `.exe` 无需安装 Python。
 
 #### 方式 B：从源码运行（基于 uv）
 ```powershell
@@ -112,3 +143,12 @@ uv run python -m howtofish_cheat.spawn_probe --item-id 56 --confirm-live-spawn
 关于逆向工程分析、FishNet 多人同步网络模型、Mono Runtime TLS 内部机制、JIT 蹦床与规避陷阱的详细说明，请参阅：
 
 📖 **[技术深度剖析与架构文档 (Technical Deep Dive)](docs/TECHNICAL_DEEP_DIVE.md)**
+
+---
+
+## 致谢与许可
+
+- **原项目：** [fredwangwang/how-to-fish-trainer](https://github.com/fredwangwang/how-to-fish-trainer)
+- **改版维护：** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
+- 项目继续遵循仓库中的 [MIT License](LICENSE)。分发修改版源码或程序时，请保留原版权与许可声明。
+- 本项目与游戏开发商、发行商和 Steam 均无隶属或官方合作关系。
