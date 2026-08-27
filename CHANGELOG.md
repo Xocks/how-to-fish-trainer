@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0rc6 - 2026-08-27
+
+### Fixed
+
+- Stop calling `mono_gchandle_free` during the game session. The RC5 Unity
+  crash report mapped the native stack return address exactly to that call in
+  the generated main-thread thunk.
+- Cache one pinned managed string per spawn key for the lifetime of the game
+  process. Retention is bounded by the 85-entry runtime catalog and is reclaimed
+  by the OS when the game exits.
+
+### Added
+
+- Add a controlled `spawn_probe` command for one-shot integration testing
+  against a user-started local game without the Rich UI or hotkeys.
+
+### Validation
+
+- Live Build 24911270 probes completed for beer (ID 56), knife (ID 63), and
+  sniper rifle (ID 70). Each native spawn call returned, the temporary patch
+  was restored, the process remained responsive for the observation window,
+  and Unity logged no new native crash marker.
+
 ## 0.2.0rc5 - 2026-08-27
 
 ### Fixed

@@ -40,7 +40,7 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
    - **Unlimited Ammo (`F4`)**: JIT-patches `Weapon.set_Ammo` with `RET` (`0xC3`) and actively locks magazine capacity to `999` while resetting reload flags.
    - **Damage Multiplier (`F5`)**: Pure real-time in-memory scaling across `PlayerPunching._damage`, `Melee._sharpnessUpgrades` array, `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage` (1x, 2x, 5x, 10x, One-Shot Kill).
    - **Add Money (`F6`)**: Directly updates authoritative static `<Money>k__BackingField` and FishNet `SyncVar<int> _money`, invokes `PlayerUI.SetMoney` for floating `+$10000` text + HUD animated roll, and calls `MoneyManager.MoneySound` for audio feedback.
-   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through the exact `GameInfo.GetSpawnable(byte)` overload, classifies the prefab catalog, and dispatches `DazedCommands.UseSpawnCommand` from a one-shot `Player.LateUpdate` main-thread gate. The pinned command string is released on that already attached Unity thread, and a two-way restoration handshake keeps it in safe scratch code until the original prologue is restored. Joined clients are rejected.
+   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through the exact `GameInfo.GetSpawnable(byte)` overload, classifies the prefab catalog, and dispatches `DazedCommands.UseSpawnCommand` from a one-shot `Player.LateUpdate` main-thread gate. Each command string is pinned once per game process and cached instead of invoking the crash-prone runtime handle release; a two-way restoration handshake keeps the Unity thread in safe scratch code until the original prologue is restored. Joined clients are rejected.
    - Disabling any cheat or exiting cleanly restores original machine code bytes and base values.
 3. **Interactive Console UI (`howtofish_cheat.ui.console`)**:
    - Live status display with connection status, active PID, Mono domain pointer, and real-time cheat states.
@@ -89,6 +89,17 @@ After testing, create a sanitized support bundle inside `test-artifacts/`:
 ```powershell
 uv run python -m howtofish_cheat.diagnostics collect
 ```
+
+For a controlled one-shot integration check against a game that you have
+already started and placed in a local session, run:
+
+```powershell
+uv run python -m howtofish_cheat.spawn_probe --item-id 56 --confirm-live-spawn
+```
+
+The probe does not launch the game. It performs exactly one spawn attempt,
+checks that the process remains alive, restores the temporary patch, and writes
+only the normal workspace-local diagnostic log.
 
 The bundle contains the latest trainer JSONL log and repository metadata. It does not include saves, full Unity logs, chat, or credentials.
 

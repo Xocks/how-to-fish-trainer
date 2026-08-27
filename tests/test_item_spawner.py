@@ -96,10 +96,9 @@ def test_main_thread_dispatch_patches_one_late_update_and_restores():
     patcher = MagicMock()
     cheat = ItemSpawnerCheat(pm=pm, mono=mono, patcher=patcher)
     cheat.use_spawn_command_native = 0x200000
-    cheat.free_gchandle_native = 0x250000
     cheat.player_late_update_native = 0x300000
 
-    cheat._dispatch_spawn_on_main_thread(0x400000, 0x500000)
+    cheat._dispatch_spawn_on_main_thread(0x400000)
 
     state_addr = 0x102800
     stub_addr = 0x103000
@@ -107,11 +106,6 @@ def test_main_thread_dispatch_patches_one_late_update_and_restores():
     assert struct.pack("<Q", state_addr) in written_stub
     assert struct.pack("<Q", 0x400000) in written_stub
     assert struct.pack("<Q", 0x200000) in written_stub
-    assert struct.pack("<Q", 0x500000) in written_stub
-    assert struct.pack("<Q", 0x250000) in written_stub
-    assert written_stub.index(struct.pack("<Q", 0x200000)) < written_stub.index(
-        struct.pack("<Q", 0x500000)
-    ) < written_stub.index(struct.pack("<Q", 0x250000))
     assert b"\x80\x38\x04" in written_stub
     assert pm.write_uchar.call_args_list == [
         ((state_addr, 1),),
@@ -140,11 +134,10 @@ def test_main_thread_dispatch_restores_patch_on_timeout():
         sleeper=lambda _: None,
     )
     cheat.use_spawn_command_native = 0x200000
-    cheat.free_gchandle_native = 0x250000
     cheat.player_late_update_native = 0x300000
 
     with pytest.raises(TimeoutError, match="state 1"):
-        cheat._dispatch_spawn_on_main_thread(0x400000, 0x500000)
+        cheat._dispatch_spawn_on_main_thread(0x400000)
 
     patcher.restore.assert_called_once_with(cheat.MAIN_THREAD_PATCH_ID)
 
@@ -158,7 +151,6 @@ def test_spawn_requires_selection_attachment_and_server_authority():
     ]
     cheat.select_item(20)
     cheat.use_spawn_command_native = 99
-    cheat.free_gchandle_native = 102
     cheat.get_server_instance_native = 100
     cheat.get_is_server_initialized_native = 101
 
@@ -184,7 +176,6 @@ def test_spawn_invokes_native_command_once_and_enforces_cooldown():
     ]
     cheat.select_item(20)
     cheat.use_spawn_command_native = 99
-    cheat.free_gchandle_native = 102
     cheat.get_server_instance_native = 100
     cheat.get_is_server_initialized_native = 101
     cheat.mono.create_string.return_value = 0x1234
@@ -200,13 +191,27 @@ def test_spawn_invokes_native_command_once_and_enforces_cooldown():
     cheat.mono.executor.call.side_effect = call
     with patch.object(cheat, "_dispatch_spawn_on_main_thread") as dispatch:
         assert cheat.spawn_selected() is True
-    dispatch.assert_called_once_with(0x1234, 0x5678)
+    dispatch.assert_called_once_with(0x1234)
     cheat.mono.create_string.assert_called_once_with("basicrifle")
     cheat.mono.pin_object.assert_called_once_with(0x1234)
     cheat.mono.free_gchandle.assert_not_called()
 
     assert cheat.spawn_selected() is False
     assert "cooldown" in cheat.last_action_message.lower()
+
+
+def test_spawn_key_string_is_pinned_once_and_never_freed_at_runtime():
+    cheat = ItemSpawnerCheat(pm=MagicMock(), mono=MagicMock(), patcher=MagicMock())
+    cheat.mono.create_string.return_value = 0x1234
+    cheat.mono.pin_object.return_value = 0x5678
+
+    assert cheat._get_pinned_spawn_string("knife") == 0x1234
+    assert cheat._get_pinned_spawn_string("knife") == 0x1234
+
+    cheat.mono.create_string.assert_called_once_with("knife")
+    cheat.mono.pin_object.assert_called_once_with(0x1234)
+    cheat.mono.free_gchandle.assert_not_called()
+    assert cheat._pinned_spawn_strings == {"knife": (0x1234, 0x5678)}
 
 
 @patch("howtofish_cheat.trainer.keyboard")
