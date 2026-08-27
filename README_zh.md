@@ -41,7 +41,7 @@
    - **无限弹药 (`F4`)**：对 `Weapon.set_Ammo` 写入 `RET` (`0xC3`) 指令，并在内存中锁定弹匣容量为 `999` 及重置换弹标记。
    - **伤害倍率 (`F5`)**：实时动态缩放 `PlayerPunching._damage`、`Melee._sharpnessUpgrades` 数组、`Attachments._bulletUpgrades` 数组以及 `WeaponInfo.ProjectileDamage`（1x, 2x, 5x, 10x, 99999x）。
    - **增加金币 (`F6`)**：直接写入权威静态字段 `<Money>k__BackingField` 与 FishNet `SyncVar<int> _money`，触发 `PlayerUI.SetMoney` 播放飘字动画，并调用 `MoneyManager.MoneySound` 播放拾取音效。
-   - **物品生成器 (`F7` / `F8`)**：精确解析 `GameInfo.GetSpawnable(byte)` 重载后枚举、分类物品，并通过一次性的 `Player.LateUpdate` 主线程入口调用 `DazedCommands.UseSpawnCommand`，让 Unity 实例化和 FishNet `Server.Spawn` 沿用游戏自身生命周期；普通联机客户端会被拒绝。
+   - **物品生成器 (`F7` / `F8`)**：精确解析 `GameInfo.GetSpawnable(byte)` 重载后枚举、分类物品，并通过一次性的 `Player.LateUpdate` 主线程入口调用 `DazedCommands.UseSpawnCommand`；双向恢复握手会让 Unity 线程停留在安全代码区，直到原方法入口完全恢复。普通联机客户端会被拒绝。
    - **安全还原**：关闭功能或退出修改器时，自动恢复原始机器码字节与伤害基准值。
 
 3. **现代化终端 UI (`howtofish_cheat.ui.console`)**：

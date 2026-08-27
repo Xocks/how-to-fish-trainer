@@ -106,7 +106,11 @@ def test_main_thread_dispatch_patches_one_late_update_and_restores():
     assert struct.pack("<Q", state_addr) in written_stub
     assert struct.pack("<Q", 0x400000) in written_stub
     assert struct.pack("<Q", 0x200000) in written_stub
-    pm.write_uchar.assert_called_once_with(state_addr, 1)
+    assert b"\x80\x38\x04" in written_stub
+    assert pm.write_uchar.call_args_list == [
+        ((state_addr, 1),),
+        ((state_addr, 4),),
+    ]
     patcher.patch_custom.assert_called_once_with(
         cheat.MAIN_THREAD_PATCH_ID,
         0x300000,

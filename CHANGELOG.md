@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0rc4 - 2026-08-27
+
+### Fixed
+
+- Add a two-way restoration handshake to the one-shot main-thread dispatcher.
+  After spawning, the Unity thread now waits inside the scratch thunk until
+  `Player.LateUpdate` has been completely restored, eliminating the race that
+  could crash the game shortly after a successfully spawned item appeared.
+- Record dispatcher arming, original prologue bytes, and safe release timing in
+  the diagnostic log.
+
 ## 0.2.0rc3 - 2026-08-27
 
 ### Fixed

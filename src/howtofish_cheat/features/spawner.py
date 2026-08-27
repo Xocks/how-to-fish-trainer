@@ -355,11 +355,19 @@ class ItemSpawnerCheat(CheatFeature):
         stub.extend(b"\x48\x83\xC4\x28")
         stub.extend(b"\x48\xB8" + struct.pack("<Q", state_addr))
         stub.extend(b"\xC6\x00\x03")  # mov byte ptr [rax], 3
+        wait_index = len(stub)
+        stub.extend(b"\xF3\x90")  # pause while the prologue is restored
+        stub.extend(b"\x80\x38\x04")  # cmp byte ptr [rax], 4
+        stub.extend(b"\x75\x00")  # jne wait
+        wait_displacement_index = len(stub) - 1
         stub.extend(b"\xC3")
         done_index = len(stub)
         stub.extend(b"\xC3")
         stub[jump_displacement_index] = (
             done_index - (jump_displacement_index + 1)
+        ) & 0xFF
+        stub[wait_displacement_index] = (
+            wait_index - (wait_displacement_index + 1)
         ) & 0xFF
         return bytes(stub)
 
@@ -381,19 +389,43 @@ class ItemSpawnerCheat(CheatFeature):
             state_addr, managed_name, self.use_spawn_command_native
         )
         entry_jump = b"\x48\xB8" + struct.pack("<Q", stub_addr) + b"\xFF\xE0"
+        original_prefix = self.pm.read_bytes(
+            self.player_late_update_native, len(entry_jump)
+        ).hex()
         self.pm.write_bytes(stub_addr, stub, len(stub))
         self.pm.write_uchar(state_addr, 1)
 
         started = self._wait_clock()
+        self._record(
+            "spawn_dispatch_armed",
+            target=f"0x{self.player_late_update_native:X}",
+            original_prefix=original_prefix,
+        )
         self.patcher.patch_custom(
             self.MAIN_THREAD_PATCH_ID,
             self.player_late_update_native,
             entry_jump,
         )
+        restored = False
+        released = False
         try:
             while True:
                 state = int(self.pm.read_uchar(state_addr))
                 if state == 3:
+                    # The Unity thread deliberately spins inside the scratch
+                    # thunk at state 3. Restore the JIT prologue while its
+                    # instruction pointer is guaranteed to be elsewhere, then
+                    # release it with state 4. This removes the restore race.
+                    self.patcher.restore(self.MAIN_THREAD_PATCH_ID)
+                    restored = True
+                    self.pm.write_uchar(state_addr, 4)
+                    released = True
+                    self._record(
+                        "spawn_dispatch_released",
+                        duration_ms=round(
+                            (self._wait_clock() - started) * 1000, 3
+                        ),
+                    )
                     return
                 if state not in {1, 2}:
                     raise RuntimeError(
@@ -405,7 +437,14 @@ class ItemSpawnerCheat(CheatFeature):
                     )
                 self._sleeper(0.005)
         finally:
-            self.patcher.restore(self.MAIN_THREAD_PATCH_ID)
+            if not restored:
+                self.patcher.restore(self.MAIN_THREAD_PATCH_ID)
+            if not released:
+                try:
+                    if int(self.pm.read_uchar(state_addr)) == 3:
+                        self.pm.write_uchar(state_addr, 4)
+                except Exception:
+                    pass
 
     def spawn_selected(self) -> bool:
         """Spawns one selected item through DazedCommands and FishNet Spawn."""
