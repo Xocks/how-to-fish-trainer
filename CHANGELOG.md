@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0rc7 - 2026-08-27
+
+### Changed
+
+- Replace the wide F7 item table with a compact grid containing four repeated
+  `ID / Item` pairs per row (20 items now fit in five rows).
+- Keep special-item warnings compact by appending a red `!` to the item name,
+  while preserving the existing second-confirmation prompt.
+
+### Validation
+
+- Add selector rendering coverage for the eight-column grid, partial final
+  rows, and risk markers.
+
 ## 0.2.0rc6 - 2026-08-27
 
 ### Fixed

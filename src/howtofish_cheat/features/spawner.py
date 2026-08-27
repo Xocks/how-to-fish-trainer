@@ -35,6 +35,11 @@ class SpawnableItem:
     category: ItemCategory
     is_quest_item: bool = False
 
+    @property
+    def requires_confirmation(self) -> bool:
+        """Whether selecting this item must show the risk confirmation prompt."""
+        return self.is_quest_item or self.category == ItemCategory.UNKNOWN
+
     def to_dict(self) -> dict:
         data = asdict(self)
         data["category"] = self.category.name.lower()

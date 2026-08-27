@@ -79,7 +79,45 @@ def test_selector_paging_and_escape():
     assert state.handle_key("ESC", by_id).action == SelectorAction.CANCELLED
 
 
-def test_selector_renderer_shows_one_page_and_risk_badge():
+def test_selector_renderer_shows_four_id_item_pairs_per_row():
+    items = [
+        SpawnableItem(item_id, f"物品 {item_id}", f"item-{item_id}", ItemCategory.ITEM)
+        for item_id in range(1, 10)
+    ]
+    state = ItemSelectorState(page_size=20)
+    panel = TrainerUI().generate_item_selector(items, state, language="zh")
+
+    assert isinstance(panel, Panel)
+    assert isinstance(panel.renderable, Group)
+    table = next(
+        renderable
+        for renderable in panel.renderable.renderables
+        if isinstance(renderable, Table)
+    )
+    assert len(table.columns) == 8
+    assert [column.header for column in table.columns] == [
+        "ID",
+        "物品",
+        "ID",
+        "物品",
+        "ID",
+        "物品",
+        "ID",
+        "物品",
+    ]
+    assert len(table.rows) == 3
+    assert all(column.no_wrap for column in table.columns[1::2])
+    assert all(column.overflow == "ellipsis" for column in table.columns[1::2])
+    assert table.columns[0]._cells == ["1", "5", "9"]
+    assert [cell.plain for cell in table.columns[1]._cells] == [
+        "物品 1",
+        "物品 5",
+        "物品 9",
+    ]
+    assert table.columns[6]._cells == ["4", "8", ""]
+
+
+def test_selector_renderer_marks_risky_item_in_compact_name_cell():
     items = _catalog()
     state = ItemSelectorState(page_size=2)
     state.page = 1
@@ -93,3 +131,6 @@ def test_selector_renderer_shows_one_page_and_risk_badge():
         if isinstance(renderable, Table)
     )
     assert len(table.rows) == 1
+    assert table.columns[0]._cells == ["42"]
+    assert table.columns[1]._cells[0].plain == "Rifle !"
+    assert table.columns[2]._cells == [""]

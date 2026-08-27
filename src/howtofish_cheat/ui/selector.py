@@ -7,7 +7,7 @@ from enum import Enum
 from math import ceil
 from typing import Dict, Optional
 
-from ..features.spawner import ItemCategory, SpawnableItem
+from ..features.spawner import SpawnableItem
 
 
 class SelectorAction(str, Enum):
@@ -94,7 +94,7 @@ class ItemSelectorState:
             self.message_kwargs = {"item_id": item_id}
             return SelectorResult(SelectorAction.CONTINUE)
 
-        if item.is_quest_item or item.category == ItemCategory.UNKNOWN:
+        if item.requires_confirmation:
             self.pending_confirmation = item
             self.message_key = ""
             self.message_kwargs = {}

@@ -20,7 +20,7 @@ Powered by `pymem`, JIT function hooking via Mono runtime interop, and an intera
 | **F4** | **Unlimited Ammo** | Infinite ammunition for all firearms without magazine depletion or forced reloads. |
 | **F5** | **Damage Multiplier** | Cycles damage multiplier for firearms, melee weapons, and fists: **`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot Kill (99999)`**. |
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
-| **F7** | **Select Spawn Item** | Opens the runtime-discovered item catalog, accepts an item ID, and requires confirmation for quest/unknown items. |
+| **F7** | **Select Spawn Item** | Opens a compact four-pair `ID / Item` catalog; a red `!` marks items that require a second confirmation. |
 | **F8** | **Spawn Selected Item** | Spawns one selected item about two metres in front of the camera. Limited to single-player or the host. |
 | **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
 | **F10** | **Safe Exit** | Restores all modified code/memory and exits the trainer safely. |

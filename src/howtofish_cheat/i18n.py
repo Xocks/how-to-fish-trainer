@@ -29,7 +29,7 @@ TRANSLATIONS = {
         "lang_switched": "语言已切换为中文 (ZH)。",
         "selector_title": "物品生成器 — F7 选择 / F8 生成",
         "selector_category": "类别",
-        "selector_item_name": "物品名称",
+        "selector_item_name": "物品",
         "selector_risk": "风险",
         "selector_risky": "需确认",
         "selector_page": "第 {current}/{total} 页，共 {count} 个可生成物品",
