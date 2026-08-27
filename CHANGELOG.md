@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0rc8 - 2026-08-27
+
+### Fixed
+
+- Recalculate the F7 grid when the terminal is resized, preserving the first
+  previously visible item while updating the page count.
+- Run the Rich dashboard in the terminal's alternate screen and clear that
+  screen after a resize so stale rows from the previous frame do not remain.
+
+### Changed
+
+- Size F7 pages from both terminal dimensions: wide windows use four item
+  pairs, narrow windows fall back to three, two, or one, and available height
+  determines the number of rows. A 160x40 terminal can show all 85 current
+  catalog entries on one page.
+
+### Validation
+
+- Add responsive-grid tests covering window sizes from 160x40 down to 20x10,
+  page-anchor preservation, adaptive rendering, and invalid sizes.
+
 ## 0.2.0rc7 - 2026-08-27
 
 ### Changed

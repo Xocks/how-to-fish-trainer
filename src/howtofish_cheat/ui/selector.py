@@ -41,6 +41,15 @@ class ItemSelectorState:
     def clamp_page(self, item_count: int) -> None:
         self.page = min(max(self.page, 0), self.total_pages(item_count) - 1)
 
+    def resize_page(self, page_size: int, item_count: int) -> None:
+        """Changes page capacity while keeping the previous first item visible."""
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        first_visible_index = self.page * self.page_size
+        self.page_size = page_size
+        self.page = first_visible_index // page_size
+        self.clamp_page(item_count)
+
     def handle_key(
         self, key: str, catalog_by_id: Dict[int, SpawnableItem]
     ) -> SelectorResult:

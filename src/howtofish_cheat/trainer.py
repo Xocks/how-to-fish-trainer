@@ -43,6 +43,10 @@ logger = logging.getLogger(__name__)
 class HowToFishTrainer:
     """Main trainer orchestrator for How to Fish."""
 
+    SELECTOR_MAX_COLUMNS = 4
+    SELECTOR_PAIR_MIN_WIDTH = 24
+    SELECTOR_VERTICAL_OVERHEAD = 10
+
     def __init__(
         self,
         process_name: str = "How to Fish.exe",
@@ -262,13 +266,27 @@ class HowToFishTrainer:
                 self.status_message = tr("selector_empty", self.language)
                 return
 
-            page_size = max(8, min(24, self.console.height - 12))
+            grid_columns, page_size = self._selector_grid_size(
+                self.console.width, self.console.height
+            )
             state = ItemSelectorState(page_size=page_size)
             by_id = spawner.catalog_by_id
+            console_size = (self.console.width, self.console.height)
 
             while self.is_running and self.pm:
+                current_size = (self.console.width, self.console.height)
+                if current_size != console_size:
+                    console_size = current_size
+                    grid_columns, page_size = self._selector_grid_size(*current_size)
+                    state.resize_page(page_size, len(catalog))
+                    self.console.clear()
                 live.update(
-                    self.ui.generate_item_selector(catalog, state, self.language),
+                    self.ui.generate_item_selector(
+                        catalog,
+                        state,
+                        self.language,
+                        column_count=grid_columns,
+                    ),
                     refresh=True,
                 )
                 key = self._read_selector_key()
@@ -296,6 +314,17 @@ class HowToFishTrainer:
         finally:
             self._selector_active = False
             self._selector_requested = False
+
+    @classmethod
+    def _selector_grid_size(cls, width: int, height: int) -> tuple[int, int]:
+        """Returns responsive item-pair columns and page capacity."""
+        usable_width = max(1, width - 6)
+        columns = max(
+            1,
+            min(cls.SELECTOR_MAX_COLUMNS, usable_width // cls.SELECTOR_PAIR_MIN_WIDTH),
+        )
+        rows = max(2, height - cls.SELECTOR_VERTICAL_OVERHEAD)
+        return columns, columns * rows
 
     def _on_hotkey_pressed(self, feature: CheatFeature) -> None:
         """Handles hotkey trigger and toggles feature."""
@@ -382,8 +411,14 @@ class HowToFishTrainer:
         self.console.clear()
 
         try:
-            with Live(console=self.console, refresh_per_second=4, screen=False) as live:
+            console_size = (self.console.width, self.console.height)
+            with Live(console=self.console, refresh_per_second=4, screen=True) as live:
                 while self.is_running:
+                    current_size = (self.console.width, self.console.height)
+                    if current_size != console_size:
+                        console_size = current_size
+                        self.console.clear()
+
                     if self.pm:
                         try:
                             _ = self.pm.read_int(self.mono.module_base)

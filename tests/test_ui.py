@@ -77,6 +77,12 @@ class TestTrainerUIDashboard(unittest.TestCase):
         trainer._cleanup_game_resources()
         self.assertEqual(len(trainer.features), 7)
 
+    def test_selector_grid_uses_available_terminal_width_and_height(self):
+        self.assertEqual(HowToFishTrainer._selector_grid_size(160, 40), (4, 120))
+        self.assertEqual(HowToFishTrainer._selector_grid_size(100, 30), (3, 60))
+        self.assertEqual(HowToFishTrainer._selector_grid_size(55, 20), (2, 20))
+        self.assertEqual(HowToFishTrainer._selector_grid_size(20, 10), (1, 2))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -104,8 +104,11 @@ class TrainerUI:
         catalog: List[SpawnableItem],
         state: ItemSelectorState,
         language: str = "zh",
+        column_count: int = 4,
     ) -> Panel:
         """Renders one page of the item catalog and the numeric prompt."""
+        if column_count <= 0:
+            raise ValueError("column_count must be greater than zero")
         state.clamp_page(len(catalog))
         start = state.page * state.page_size
         visible_items = catalog[start : start + state.page_size]
@@ -117,7 +120,7 @@ class TrainerUI:
             pad_edge=False,
             padding=(0, 1),
         )
-        for _ in range(4):
+        for _ in range(column_count):
             table.add_column("ID", justify="right", style="bold cyan", width=4)
             table.add_column(
                 tr("selector_item_name", language),
@@ -127,15 +130,16 @@ class TrainerUI:
                 overflow="ellipsis",
             )
 
-        for row_start in range(0, len(visible_items), 4):
+        cell_count = column_count * 2
+        for row_start in range(0, len(visible_items), column_count):
             cells = []
-            for item in visible_items[row_start : row_start + 4]:
+            for item in visible_items[row_start : row_start + column_count]:
                 item_name = Text(item.display_name)
                 if item.requires_confirmation:
                     item_name.append(" !", style="bold red")
                 cells.extend((str(item.id), item_name))
 
-            while len(cells) < 8:
+            while len(cells) < cell_count:
                 cells.extend(("", ""))
             table.add_row(*cells)
 
