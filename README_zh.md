@@ -11,7 +11,7 @@
 > MIT 许可声明均予以保留。
 
 - **改版仓库：** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
-- **当前开发分支：** [`feat/item-spawner-v0.2.0`](https://github.com/Xocks/how-to-fish-trainer/tree/feat/item-spawner-v0.2.0)
+- **当前唯一分支：** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
 - **当前测试标签：** [`v0.2.0-rc.8`](https://github.com/Xocks/how-to-fish-trainer/tree/v0.2.0-rc.8)
 
 基于 `pymem` 与底层 Mono Runtime C API 互操作实现 JIT 函数 Hook / 机器码补丁，并提供 `rich` 现代化交互式终端控制面板，支持中英文双语无缝切换与免 Python 单文件 `.exe` 运行。

@@ -12,7 +12,7 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 > copyright notice and MIT license are preserved.
 
 - **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
-- **Development branch:** [`feat/item-spawner-v0.2.0`](https://github.com/Xocks/how-to-fish-trainer/tree/feat/item-spawner-v0.2.0)
+- **Current branch:** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
 - **Current test tag:** [`v0.2.0-rc.8`](https://github.com/Xocks/how-to-fish-trainer/tree/v0.2.0-rc.8)
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
