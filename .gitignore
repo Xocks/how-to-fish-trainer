@@ -14,3 +14,7 @@ wheels/
 .uv-cache/
 logs/
 test-artifacts/
+
+# Managed helper build output
+runtime/**/bin/
+runtime/**/obj/

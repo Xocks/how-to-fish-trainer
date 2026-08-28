@@ -248,12 +248,12 @@ class TestDamageMultiplier(unittest.TestCase):
         self.mock_mono.executor.call.return_value = 0x22222
 
         trainer._setup_features()
-        self.assertEqual(len(trainer.features), 7)
+        self.assertEqual(len(trainer.features), 10)
         feature_names = [f.name for f in trainer.features]
         self.assertIn("Damage Multiplier", feature_names)
         self.assertIn("Add Money (+1w)", feature_names)
 
-        # Verify UI render with all 7 cheats
+        # Verify UI render with all attached features
         ui = TrainerUI()
         panel = ui.generate_dashboard(
             is_attached=True,

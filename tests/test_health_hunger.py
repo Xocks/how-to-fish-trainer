@@ -20,9 +20,11 @@ class TestHealthAndHungerCheats(unittest.TestCase):
         self.assertFalse(cheat.is_enabled)
 
     def test_lock_health_prepare(self):
-        self.mock_mono.find_class.side_effect = lambda asm, cls: {
+        self.mock_mono.find_class.side_effect = lambda asm, cls, *rest: {
             "PlayerVitals": 0x1000,
             "Player": 0x2000,
+            "Server": 0x3000,
+            "NetworkBehaviour": 0x4000,
         }.get(cls, 0)
 
         self.mock_mono.get_export.return_value = 0x5555
@@ -81,6 +83,8 @@ class TestHealthAndHungerCheats(unittest.TestCase):
         cheat.prev_fire_offset = 0x190
         cheat.prev_poison_offset = 0x18C
         cheat.on_health_change_native = 0x8500
+        cheat.get_server_instance_native = 0x8600
+        cheat.get_is_server_initialized_native = 0x8700
 
         def mock_read_ulonglong(addr):
             if addr == 0x2210:
@@ -92,6 +96,11 @@ class TestHealthAndHungerCheats(unittest.TestCase):
             return 0
 
         self.mock_pm.read_ulonglong.side_effect = mock_read_ulonglong
+        self.mock_mono.executor.call.side_effect = lambda func, *args: {
+            0x8600: 0x9000,
+            0x8700: 1,
+            0x8500: 0,
+        }[func]
 
         self.assertTrue(cheat.enable())
         self.assertTrue(cheat.is_enabled)
@@ -126,6 +135,35 @@ class TestHealthAndHungerCheats(unittest.TestCase):
         self.assertFalse(cheat.is_enabled)
         self.mock_patcher.restore.assert_called_with("TakeDamage")
         self.mock_pm.write_float.assert_called_with(0x619C, 0.0)
+
+    def test_joined_client_health_never_overwrites_server_syncvar(self):
+        cheat = LockHealthCheat(self.mock_pm, self.mock_mono, self.mock_patcher)
+        cheat.method_addrs = {"LocalHit": 0x8000}
+        cheat.local_player_ptr_addr = 0x2210
+        cheat.vitals_offset = 0x20
+        cheat.local_hp_offset = 0x194
+        cheat.prev_hp_offset = 0x184
+        cheat.synced_hp_offset = 0x0F0
+        cheat.get_server_instance_native = 0x8600
+        cheat.get_is_server_initialized_native = 0x8700
+        self.mock_mono.executor.call.side_effect = lambda func, *args: {
+            0x8600: 0x9000,
+            0x8700: 0,
+        }[func]
+        self.mock_pm.read_ulonglong.side_effect = lambda addr: {
+            0x2210: 0x5000,
+            0x5020: 0x6000,
+            0x60F0: 0x7000,
+        }.get(addr, 0)
+
+        assert cheat.enable() is True
+        assert "PARTIAL" in cheat.get_status_badge("en")
+        self.mock_pm.write_int.assert_any_call(0x6194, 100)
+        self.mock_pm.write_int.assert_any_call(0x6184, 100)
+        assert not any(
+            call.args and call.args[0] in {0x706C, 0x7070}
+            for call in self.mock_pm.write_int.call_args_list
+        )
 
     def test_lock_hunger_initialization(self):
         cheat = LockHungerCheat(self.mock_pm, self.mock_mono, self.mock_patcher, hotkey="F2")

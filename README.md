@@ -1,4 +1,4 @@
-# How to Fish (渔力全开) - Xocks Item Spawner Edition
+# How to Fish (渔力全开) - Xocks External Trainer Edition
 
 [English](README.md) | [简体中文](README_zh.md)
 
@@ -13,11 +13,11 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 
 - **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
 - **Current branch:** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
-- **Current test tag:** [`v0.2.0-rc.8`](https://github.com/Xocks/how-to-fish-trainer/tree/v0.2.0-rc.8)
+- **Current code version:** `0.3.0rc1` (the RC tag waits for live validation)
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
-> **v0.2.0 RC:** The item spawner has automated test coverage but still requires in-game validation on the current Steam build before a final v0.2.0 release.
+> **v0.3.0 RC:** The compatibility gate, hard block for character spawning, head aim, item/creature labels, and private-lobby client request path have automated coverage and a successfully compiled helper DLL. This is not yet evidence of live in-game success.
 
 ---
 
@@ -30,6 +30,12 @@ Compared with the upstream baseline, this branch adds:
 | **F7 runtime item catalog** | Scans the game's own `GameInfo.GetSpawnable(byte)` catalog and reads IDs, display names, spawn keys, categories, and quest flags. The catalog is rebuilt after reconnecting. |
 | **F8 native item spawning** | Calls `DazedCommands.UseSpawnCommand` to spawn the selected item about two metres in front of the camera. It is restricted to single-player or the host and has a 500ms cooldown. |
 | **Special-item safeguards** | Quest and unknown items receive a red `!` marker and require a second confirmation. |
+| **Character hard block** | ID 53, `deadplayer`, and prefabs carrying `DeadPlayer` are marked with `×` and cannot reach the native spawn call. |
+| **Compatibility gate** | Verifies the assembly hash, Mono method/field contracts, and native JIT entries; unknown builds run in diagnostics-only mode. |
+| **F9 head aim** | While holding a gun, ADS plus right mouse targets creature heads. Other players require explicit private-lobby consent. |
+| **F11 item/creature labels** | Displays categorized names and distances, dims obstructed objects, and caps the default view at 200 labels / 150 metres. |
+| **Insert mouse panel** | Opens Combat, ESP, Experiment, and Diagnostics tabs with mouse-controlled sliders and toggles. |
+| **Joined-client experiment** | Uses the game's existing `Server.BuyItem` RPC only for safe items/weapons after private-lobby consent, with one request at a time, a two-second cooldown, and fail-closed synchronization. |
 | **Crash fixes** | Dispatches spawning on Unity's main thread, uses a two-way restoration handshake, and retains pinned Mono command strings for the current game process to avoid the identified cleanup-timing crashes. |
 | **Responsive selector UI** | Uses four `ID / Item` pairs on wide terminals, automatically reduces columns on narrow windows, uses available height for larger pages, and redraws cleanly after resizing. |
 | **Diagnostics and tests** | Adds sanitized support bundles, a one-shot `spawn_probe`, and automated coverage for catalog scanning, selector input, authority checks, cooldowns, reconnects, and main-thread restoration. |
@@ -42,14 +48,17 @@ This remains an external process-memory trainer. It does not replace game files 
 
 | Hotkey | Feature | Description |
 | :--- | :--- | :--- |
-| **F1** | **Lock Health** | Blocks all incoming damage (NPC hits, punches, hazards, fire, poison, starvation) & dissipates elemental gauges. **Normal jump physics preserved.** |
+| **F1** | **Lock Health** | Full protection for solo/host. Joined clients block local damage reports and statuses but honestly show partial support when the server owns the damage result. |
 | **F2** | **Lock Hunger** | Prevents fullness meter from dropping over time or during actions. |
 | **F3** | **Infinite Air Jump** | Pure movement patch: allows infinite mid-air jumps / air flight (**InGodMode is NOT used; health unaffected**). |
 | **F4** | **Unlimited Ammo** | Infinite ammunition for all firearms without magazine depletion or forced reloads. |
 | **F5** | **Damage Multiplier** | Cycles damage multiplier for firearms, melee weapons, and fists: **`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot Kill (99999)`**. |
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
 | **F7** | **Select Spawn Item** | Opens a responsive `ID / Item` grid: wide windows use four pairs and taller windows show more rows, while narrow windows reduce the column count automatically. A red `!` marks confirmation-required items. |
-| **F8** | **Spawn Selected Item** | Spawns one selected item about two metres in front of the camera. Limited to single-player or the host. |
+| **F8** | **Spawn Selected Item** | Solo/host spawns in front; a consented private-lobby client may request one safe item directly into its hand. |
+| **F9** | **Head Aim** | While ADS, hold right mouse to track an unobstructed creature/player head. |
+| **F11** | **Item / Creature ESP** | Toggles categorized name and distance labels. |
+| **Insert** | **Mouse Panel** | Opens or closes the mouse-driven settings and diagnostics panel. |
 | **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
 | **F10** | **Safe Exit** | Restores all modified code/memory and exits the trainer safely. |
 
@@ -68,7 +77,8 @@ This remains an external process-memory trainer. It does not replace game files 
    - **Unlimited Ammo (`F4`)**: JIT-patches `Weapon.set_Ammo` with `RET` (`0xC3`) and actively locks magazine capacity to `999` while resetting reload flags.
    - **Damage Multiplier (`F5`)**: Pure real-time in-memory scaling across `PlayerPunching._damage`, `Melee._sharpnessUpgrades` array, `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage` (1x, 2x, 5x, 10x, One-Shot Kill).
    - **Add Money (`F6`)**: Directly updates authoritative static `<Money>k__BackingField` and FishNet `SyncVar<int> _money`, invokes `PlayerUI.SetMoney` for floating `+$10000` text + HUD animated roll, and calls `MoneyManager.MoneySound` for audio feedback.
-   - **Item Spawner (`F7` / `F8`)**: Enumerates IDs through the exact `GameInfo.GetSpawnable(byte)` overload, classifies the prefab catalog, and dispatches `DazedCommands.UseSpawnCommand` from a one-shot `Player.LateUpdate` main-thread gate. Each command string is pinned once per game process and cached instead of invoking the crash-prone runtime handle release; a two-way restoration handshake keeps the Unity thread in safe scratch code until the original prologue is restored. Joined clients are rejected.
+   - **Item Spawner (`F7` / `F8`)**: Classifies every prefab with `SpawnSafety` before the existing one-shot main-thread dispatch. Joined clients use only the private-lobby safe RPC probe and never spoof `IsServerInitialized`.
+   - **Aim / ESP (`F9` / `F11`)**: The external controller loads a repository-built helper into the existing Mono domain. Unity object enumeration, projection, aim rotation, and IMGUI drawing stay on Unity's main thread; no helper DLL is copied into the game installation.
    - Disabling any cheat or exiting cleanly restores original machine code bytes and base values.
 3. **Interactive Console UI (`howtofish_cheat.ui.console`)**:
    - Live status display with connection status, active PID, Mono domain pointer, and real-time cheat states.
@@ -103,6 +113,9 @@ uv run pytest -v
 - Press **F6** to **Add Money (+1w / +$10,000)** on press.
 - Press **F7** to open the item catalog, enter an ID, and confirm the selection.
 - Press **F8** to spawn one selected item in single-player or while hosting.
+- Press **F9** to toggle head aim; hold right mouse while ADS.
+- Press **F11** to toggle item / creature labels.
+- Press **Insert** to open or close the mouse panel.
 - Press **F12** to **Switch Language (中文 / EN)** at any time.
 - Press **F10** or **Ctrl+C** to cleanly exit the trainer.
 

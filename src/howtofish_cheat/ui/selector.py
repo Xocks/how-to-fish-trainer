@@ -103,6 +103,16 @@ class ItemSelectorState:
             self.message_kwargs = {"item_id": item_id}
             return SelectorResult(SelectorAction.CONTINUE)
 
+        if not item.is_selectable:
+            self.input_buffer = ""
+            self.message_key = "selector_blocked"
+            self.message_kwargs = {
+                "item_id": item.id,
+                "item_name": item.display_name,
+                "reason": item.safety_reason,
+            }
+            return SelectorResult(SelectorAction.CONTINUE)
+
         if item.requires_confirmation:
             self.pending_confirmation = item
             self.message_key = ""

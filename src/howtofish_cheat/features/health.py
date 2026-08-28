@@ -1,8 +1,9 @@
 """Lock Health cheat feature with elemental dissipation."""
 
 import logging
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 from .base import CheatFeature
+from ..models import ClientCapabilityState
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class LockHealthCheat(CheatFeature):
         mono: Optional[object] = None,
         patcher: Optional[object] = None,
         hotkey: str = "F1",
+        event_sink: Optional[Callable[[str, dict], None]] = None,
     ):
         super().__init__(
             name="Lock Health",
@@ -28,6 +30,8 @@ class LockHealthCheat(CheatFeature):
             patcher=patcher,
         )
         self.method_addrs: Dict[str, int] = {}
+        self._event_sink = event_sink
+        self.capability_state = ClientCapabilityState.DISABLED
 
         # Player & Vitals offsets for real-time memory locking
         self.local_player_ptr_addr: Optional[int] = None
@@ -40,6 +44,15 @@ class LockHealthCheat(CheatFeature):
         self.prev_fire_offset: Optional[int] = None
         self.prev_poison_offset: Optional[int] = None
         self.on_health_change_native: Optional[int] = None
+        self.get_server_instance_native: Optional[int] = None
+        self.get_is_server_initialized_native: Optional[int] = None
+
+    def _record(self, event: str, **data) -> None:
+        if self._event_sink:
+            try:
+                self._event_sink(event, data)
+            except Exception:
+                logger.debug("Failed to record health event", exc_info=True)
 
     def prepare(self) -> bool:
         """Finds and JIT compiles all damage and elemental methods, and caches memory offsets."""
@@ -73,6 +86,22 @@ class LockHealthCheat(CheatFeature):
             except Exception as e:
                 logger.debug(f"Could not compile OnHealthChange: {e}")
 
+            try:
+                server_cls = self.mono.find_class("Assembly-CSharp", "Server")
+                network_behaviour_cls = self.mono.find_class(
+                    "FishNet.Runtime", "NetworkBehaviour", "FishNet.Object"
+                )
+                self.get_server_instance_native = self.mono.compile_method(
+                    self.mono.find_method(server_cls, "get_Instance", 0)
+                )
+                self.get_is_server_initialized_native = self.mono.compile_method(
+                    self.mono.find_method(
+                        network_behaviour_cls, "get_IsServerInitialized", 0
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Could not resolve server authority state: {e}")
+
             # 2. Resolve Player.LocalPlayer static address and field offsets
             try:
                 p_vtable = self.mono.executor.call(self.mono.get_export("mono_class_vtable"), self.mono.root_domain, player_cls)
@@ -105,11 +134,24 @@ class LockHealthCheat(CheatFeature):
             for mname, native_addr in self.method_addrs.items():
                 self.patcher.patch_ret(mname, native_addr)
 
-            # Set health to 100 once upon activation
-            self._set_health_to_100()
+            server_authorized = self.is_server_authorized()
+            self.capability_state = (
+                ClientCapabilityState.AVAILABLE
+                if server_authorized
+                else ClientCapabilityState.PARTIAL
+            )
+
+            # Set authoritative health only while hosting. Joined clients keep
+            # the SyncVar untouched and rely solely on damage-report blocking.
+            self._set_health_to_100(write_synced=server_authorized)
 
             # Trigger native UI refresh
-            if self.on_health_change_native and self.local_player_ptr_addr and self.vitals_offset:
+            if (
+                server_authorized
+                and self.on_health_change_native
+                and self.local_player_ptr_addr
+                and self.vitals_offset
+            ):
                 try:
                     lp_inst = self.pm.read_ulonglong(self.local_player_ptr_addr)
                     if lp_inst:
@@ -121,6 +163,17 @@ class LockHealthCheat(CheatFeature):
                     pass
 
             self.is_enabled = True
+            self._record(
+                "client_defense_enabled",
+                capability=self.capability_state.value,
+                server_authorized=server_authorized,
+                patched_methods=sorted(self.method_addrs),
+                caveat=(
+                    "server_authoritative_damage_not_guaranteed"
+                    if not server_authorized
+                    else ""
+                ),
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to enable Lock Health: {e}")
@@ -135,12 +188,31 @@ class LockHealthCheat(CheatFeature):
 
             self._reset_invulnerability()
             self.is_enabled = False
+            self.capability_state = ClientCapabilityState.DISABLED
             return True
         except Exception as e:
             logger.error(f"Failed to disable Lock Health: {e}")
             return False
 
-    def _set_health_to_100(self) -> None:
+    def is_server_authorized(self) -> bool:
+        if (
+            not self.mono
+            or not self.get_server_instance_native
+            or not self.get_is_server_initialized_native
+        ):
+            return False
+        try:
+            server_ptr = self.mono.executor.call(self.get_server_instance_native)
+            return bool(
+                server_ptr
+                and self.mono.executor.call(
+                    self.get_is_server_initialized_native, server_ptr
+                )
+            )
+        except Exception:
+            return False
+
+    def _set_health_to_100(self, write_synced: bool = True) -> None:
         """Sets HP to 100 upon activation, initializes invulnerability timer, and clears fire/poison."""
         if not self.local_player_ptr_addr or not self.vitals_offset:
             return
@@ -157,7 +229,7 @@ class LockHealthCheat(CheatFeature):
                 self.pm.write_int(vitals_inst + self.local_hp_offset, 100)
             if self.prev_hp_offset:
                 self.pm.write_int(vitals_inst + self.prev_hp_offset, 100)
-            if self.synced_hp_offset:
+            if write_synced and self.synced_hp_offset:
                 synced_hp_ptr = self.pm.read_ulonglong(vitals_inst + self.synced_hp_offset)
                 if synced_hp_ptr:
                     self.pm.write_int(synced_hp_ptr + 0x6C, 100)
@@ -214,3 +286,22 @@ class LockHealthCheat(CheatFeature):
         """Maintains elemental status dissipation every tick without overriding network health."""
         if self.is_enabled:
             self._dissipate_elemental_status()
+
+    def get_status_badge(self, language: str = "en") -> str:
+        if not self.is_enabled:
+            return (
+                "[dim red]已关闭[/dim red]"
+                if language == "zh"
+                else "[dim red]DISABLED[/dim red]"
+            )
+        if self.capability_state == ClientCapabilityState.PARTIAL:
+            return (
+                "[bold yellow]客户端部分保护[/bold yellow]"
+                if language == "zh"
+                else "[bold yellow]CLIENT PARTIAL[/bold yellow]"
+            )
+        return (
+            "[bold green]完整保护[/bold green]"
+            if language == "zh"
+            else "[bold green]FULL PROTECTION[/bold green]"
+        )

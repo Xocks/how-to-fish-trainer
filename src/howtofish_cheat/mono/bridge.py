@@ -37,25 +37,26 @@ class MonoBridge:
         self._initialize_mono()
 
     def _load_exports(self) -> None:
-        """Parses exports from the local Mono DLL to compute remote virtual addresses."""
-        mono_path = None
-        candidates = [
-            r"D:\SteamLibrary\steamapps\common\How to Fish\How to Fish\MonoBleedingEdge\EmbedRuntime\mono-2.0-bdwgc.dll",
-        ]
-        for c in candidates:
-            if os.path.exists(c):
-                mono_path = c
-                break
+        """Resolves exports without depending on a hard-coded Steam path."""
+        try:
+            self._load_exports_from_memory()
+        except Exception:
+            self.exports.clear()
 
-        if mono_path and os.path.exists(mono_path):
+        if self.exports:
+            return
+
+        mono_path = getattr(self.mono_module, "filename", None)
+        if mono_path and os.path.isfile(mono_path):
             pe = pefile.PE(mono_path)
             if hasattr(pe, "DIRECTORY_ENTRY_EXPORT"):
                 for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
                     if exp.name:
                         name = exp.name.decode("utf-8")
                         self.exports[name] = self.module_base + exp.address
-        else:
-            self._load_exports_from_memory()
+
+        if not self.exports:
+            raise RuntimeError("Could not resolve Mono runtime exports.")
 
     def _load_exports_from_memory(self) -> None:
         """Parses PE export directory directly from remote module memory."""
@@ -165,6 +166,33 @@ class MonoBridge:
 
         self.classes[key] = class_ptr
         return class_ptr
+
+    def load_assembly(self, assembly_path: str, assembly_name: Optional[str] = None) -> int:
+        """Loads a managed helper assembly into the existing Mono domain.
+
+        The file stays outside the game installation.  Loading is performed on
+        an attached Mono worker thread; Unity APIs must still be dispatched to
+        the game's main thread by the caller.
+        """
+        path = os.path.abspath(assembly_path)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(path)
+        path_addr = self.executor.write_string(0x2000, path)
+        assembly_ptr = self.executor.call(
+            self.get_export("mono_domain_assembly_open"),
+            self.root_domain,
+            path_addr,
+        )
+        if not assembly_ptr:
+            raise RuntimeError(f"Mono refused helper assembly: {path}")
+        image_ptr = self.executor.call(
+            self.get_export("mono_assembly_get_image"), assembly_ptr
+        )
+        if not image_ptr:
+            raise RuntimeError(f"Could not resolve helper assembly image: {path}")
+        if assembly_name:
+            self.images[assembly_name] = image_ptr
+        return image_ptr
 
     def find_method(self, class_ptr: int, method_name: str, param_count: int = -1) -> int:
         """Finds a MonoMethod pointer on a class."""

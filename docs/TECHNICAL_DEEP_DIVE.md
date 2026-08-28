@@ -12,6 +12,12 @@ A comprehensive technical breakdown of reverse engineering, memory architecture,
 - **Networking Framework**: **FishNet** (`FishNet.Runtime.dll`)
 - **Memory Trainer Stack**: Python 3.10+, `pymem`, x64 Windows API (`VirtualAllocEx`, `CreateRemoteThread`, `VirtualProtectEx`), `rich`
 
+### 1.1 v0.3 Runtime Boundary
+
+The Python controller remains an external process. It validates the exact game assembly before patching, loads `HowToFishTrainer.Runtime.dll` into the existing Mono domain from the trainer directory, and dispatches Unity initialization from a one-shot `Player.LateUpdate` gate. No DLL is copied into the game installation. Aim target enumeration, `Camera.WorldToScreenPoint`, physics obstruction checks, and IMGUI rendering run only on Unity's main thread; remote worker threads only update primitive control flags.
+
+The helper provides F9 ADS/right-mouse head aim for creatures and consented private-lobby players, F11 item/creature labels, and an Insert mouse panel. Shutdown clears all feature flags and destroys the helper `GameObject`; Mono retains the loaded assembly until the game process ends because the root domain cannot unload an individual assembly.
+
 ---
 
 ## 2. Reverse Engineering the Game Systems

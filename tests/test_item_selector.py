@@ -8,6 +8,7 @@ from howtofish_cheat.features.spawner import (
     ItemCategory,
     SpawnableItem,
 )
+from howtofish_cheat.models import SpawnSafety
 from howtofish_cheat.ui.console import TrainerUI
 from howtofish_cheat.ui.selector import (
     ItemSelectorState,
@@ -63,6 +64,23 @@ def test_selector_requires_second_confirmation_for_quest_item():
     result = state.handle_key("Y", by_id)
     assert result.action == SelectorAction.SELECTED
     assert result.item == items[2]
+
+
+def test_selector_refuses_blocked_network_actor_without_confirmation():
+    blocked = SpawnableItem(
+        53,
+        "角色",
+        "deadplayer",
+        ItemCategory.ITEM,
+        False,
+        SpawnSafety.BLOCKED,
+        "network_actor_requires_player_state",
+    )
+    state = ItemSelectorState()
+    result = _type_id(state, 53, [blocked])
+    assert result.action == SelectorAction.CONTINUE
+    assert state.pending_confirmation is None
+    assert state.message_key == "selector_blocked"
 
 
 def test_selector_paging_and_escape():

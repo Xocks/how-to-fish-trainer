@@ -9,6 +9,12 @@ from .ammo import UnlimitedAmmoCheat
 from .damage import DamageMultiplierCheat
 from .money import AddMoneyCheat
 from .spawner import ItemCategory, ItemSpawnerCheat, SpawnableItem
+from .runtime import (
+    AimAssistCheat,
+    EspOverlayCheat,
+    ManagedRuntimeController,
+    MousePanelFeature,
+)
 
 
 def get_default_features() -> List[CheatFeature]:
@@ -35,6 +41,10 @@ __all__ = [
     "ItemCategory",
     "ItemSpawnerCheat",
     "SpawnableItem",
+    "ManagedRuntimeController",
+    "AimAssistCheat",
+    "EspOverlayCheat",
+    "MousePanelFeature",
     "get_default_features",
 ]
 

@@ -28,7 +28,16 @@ from .features import (
     DamageMultiplierCheat,
     AddMoneyCheat,
     ItemSpawnerCheat,
+    ManagedRuntimeController,
+    AimAssistCheat,
+    EspOverlayCheat,
+    MousePanelFeature,
     get_default_features,
+)
+from .compatibility import (
+    CompatibilityGate,
+    CompatibilityReport,
+    locate_managed_directory,
 )
 from .diagnostics import DiagnosticSession
 from .mono.bridge import MonoBridge
@@ -67,6 +76,9 @@ class HowToFishTrainer:
         self._control_hotkey_hooks = []
         self._selector_requested = False
         self._selector_active = False
+        self.compatibility_gate = CompatibilityGate()
+        self.compatibility_report: Optional[CompatibilityReport] = None
+        self.runtime_controller: Optional[ManagedRuntimeController] = None
         self.diagnostics = diagnostics or DiagnosticSession()
         self.diagnostics.record(
             "session_started", process_name=process_name, language=language
@@ -121,8 +133,37 @@ class HowToFishTrainer:
         try:
             self.pm = pymem.Pymem(self.process_name)
             self.status_message = tr("found_process", self.language, process_name=self.process_name)
+            managed_dir = locate_managed_directory(self.pm, self.process_name)
+            assembly_path = managed_dir / "Assembly-CSharp.dll" if managed_dir else None
+            disk_report = self.compatibility_gate.inspect_disk(assembly_path)
+            self.compatibility_report = disk_report
+            self.diagnostics.record("compatibility_disk", **disk_report.to_dict())
+            if not disk_report.compatible:
+                self.status_message = tr(
+                    "compatibility_blocked",
+                    self.language,
+                    reason=", ".join(disk_report.errors),
+                )
+                return True
             self.patcher = MethodPatcher(self.pm)
             self.mono = MonoBridge(self.pm)
+            runtime_report = self.compatibility_gate.inspect_runtime(
+                self.mono, disk_report
+            )
+            self.compatibility_report = runtime_report
+            self.diagnostics.record(
+                "compatibility_runtime", **runtime_report.to_dict()
+            )
+            if not runtime_report.compatible:
+                self.status_message = tr(
+                    "compatibility_blocked",
+                    self.language,
+                    reason="; ".join(runtime_report.errors),
+                )
+                self.mono.close()
+                self.mono = None
+                self.patcher = None
+                return True
             self._setup_features()
             self._setup_feature_hotkeys()
             self.status_message = tr("attached_ready", self.language)
@@ -145,7 +186,13 @@ class HowToFishTrainer:
 
     def _setup_features(self) -> None:
         """Initializes all available cheat features and pre-compiles JIT methods."""
-        health_cheat = LockHealthCheat(self.pm, self.mono, self.patcher, hotkey="F1")
+        health_cheat = LockHealthCheat(
+            self.pm,
+            self.mono,
+            self.patcher,
+            hotkey="F1",
+            event_sink=self.diagnostics.sink,
+        )
         hunger_cheat = LockHungerCheat(self.pm, self.mono, self.patcher, hotkey="F2")
         jump_cheat = InfiniteJumpCheat(self.pm, self.mono, self.patcher, hotkey="F3")
         ammo_cheat = UnlimitedAmmoCheat(self.pm, self.mono, self.patcher, hotkey="F4")
@@ -158,6 +205,18 @@ class HowToFishTrainer:
             hotkey="F8",
             event_sink=self.diagnostics.sink,
         )
+        runtime_controller = ManagedRuntimeController(
+            self.pm,
+            self.mono,
+            self.patcher,
+            event_sink=self.diagnostics.sink,
+        )
+        item_spawner.client_requester = runtime_controller.request_client_item
+        item_spawner.client_state_reader = runtime_controller.get_client_spawn_state
+        item_spawner.client_state_resetter = runtime_controller.reset_client_spawn_state
+        aim_cheat = AimAssistCheat(runtime_controller, hotkey="F9")
+        esp_cheat = EspOverlayCheat(runtime_controller, hotkey="F11")
+        mouse_panel = MousePanelFeature(runtime_controller, hotkey="Insert")
 
         health_cheat.prepare()
         hunger_cheat.prepare()
@@ -166,6 +225,7 @@ class HowToFishTrainer:
         damage_cheat.prepare()
         money_cheat.prepare()
         item_spawner.prepare()
+        self.runtime_controller = runtime_controller
 
         self.features = [
             health_cheat,
@@ -175,6 +235,9 @@ class HowToFishTrainer:
             damage_cheat,
             money_cheat,
             item_spawner,
+            aim_cheat,
+            esp_cheat,
+            mouse_panel,
         ]
 
     def _setup_feature_hotkeys(self) -> None:
@@ -368,6 +431,13 @@ class HowToFishTrainer:
             except Exception:
                 pass
 
+        if self.runtime_controller:
+            try:
+                self.runtime_controller.shutdown()
+            except Exception:
+                pass
+            self.runtime_controller = None
+
         if self.patcher:
             try:
                 self.patcher.restore_all()
@@ -421,7 +491,12 @@ class HowToFishTrainer:
 
                     if self.pm:
                         try:
-                            _ = self.pm.read_int(self.mono.module_base)
+                            probe_address = (
+                                self.mono.module_base
+                                if self.mono
+                                else self.pm.base_address
+                            )
+                            _ = self.pm.read_int(probe_address)
                         except Exception:
                             self.status_message = tr("game_closed", self.language)
                             self.diagnostics.record("game_disconnected")
@@ -432,11 +507,10 @@ class HowToFishTrainer:
 
                     if self.pm and self.features:
                         for f in self.features:
-                            if f.is_enabled:
-                                try:
-                                    f.update()
-                                except Exception:
-                                    pass
+                            try:
+                                f.update()
+                            except Exception:
+                                pass
 
                     if self._selector_requested and self.pm and self.mono:
                         self._run_item_selector(live)
@@ -453,6 +527,7 @@ class HowToFishTrainer:
                         features=self.features,
                         status_message=self.status_message,
                         language=self.language,
+                        compatibility=self.compatibility_report,
                     )
                     live.update(dashboard)
                     time.sleep(0.25)

@@ -146,7 +146,7 @@ class TestAddMoney(unittest.TestCase):
         self.mock_mono.executor.call.return_value = 0x22222
 
         trainer._setup_features()
-        self.assertEqual(len(trainer.features), 7)
+        self.assertEqual(len(trainer.features), 10)
 
         money_feature = [f for f in trainer.features if isinstance(f, AddMoneyCheat)][0]
         self.assertEqual(money_feature.hotkey, "F6")

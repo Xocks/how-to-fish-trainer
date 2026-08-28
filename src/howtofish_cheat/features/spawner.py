@@ -12,6 +12,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from .base import CheatFeature
 from ..i18n import tr
+from ..models import ClientCapabilityState, SpawnSafety
+from ..mono.main_thread import MAIN_THREAD_PATCH_LOCK
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +36,25 @@ class SpawnableItem:
     spawn_key: str
     category: ItemCategory
     is_quest_item: bool = False
+    safety: SpawnSafety = SpawnSafety.SAFE
+    safety_reason: str = ""
 
     @property
     def requires_confirmation(self) -> bool:
         """Whether selecting this item must show the risk confirmation prompt."""
-        return self.is_quest_item or self.category == ItemCategory.UNKNOWN
+        return self.safety == SpawnSafety.CONFIRM_REQUIRED or (
+            self.safety != SpawnSafety.BLOCKED
+            and (self.is_quest_item or self.category == ItemCategory.UNKNOWN)
+        )
+
+    @property
+    def is_selectable(self) -> bool:
+        return self.safety != SpawnSafety.BLOCKED
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["category"] = self.category.name.lower()
+        data["safety"] = self.safety.value
         return data
 
 
@@ -51,6 +63,7 @@ class ItemSpawnerCheat(CheatFeature):
 
     SELECT_HOTKEY = "F7"
     SPAWN_COOLDOWN_SECONDS = 0.5
+    CLIENT_SPAWN_COOLDOWN_SECONDS = 2.0
     MAIN_THREAD_TIMEOUT_SECONDS = 4.0
     MAIN_THREAD_PATCH_ID = "spawner.main_thread_dispatch"
 
@@ -72,6 +85,8 @@ class ItemSpawnerCheat(CheatFeature):
             "sniperrifle",
         }
     )
+    BLOCKED_SPAWN_KEYS = frozenset({"deadplayer"})
+    CONFIRM_SPAWN_KEYS = frozenset({"dynamite"})
 
     def __init__(
         self,
@@ -83,6 +98,9 @@ class ItemSpawnerCheat(CheatFeature):
         clock: Callable[[], float] = time.monotonic,
         wait_clock: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], None] = time.sleep,
+        client_requester: Optional[Callable[[int], bool]] = None,
+        client_state_reader: Optional[Callable[[], int]] = None,
+        client_state_resetter: Optional[Callable[[], None]] = None,
     ):
         super().__init__(
             name="Item Spawner",
@@ -105,6 +123,7 @@ class ItemSpawnerCheat(CheatFeature):
         self._wait_clock = wait_clock
         self._sleeper = sleeper
         self._last_spawn_at = float("-inf")
+        self._last_client_spawn_at = float("-inf")
         self._spawn_lock = threading.Lock()
         self._pinned_spawn_strings: Dict[str, Tuple[int, int]] = {}
 
@@ -113,10 +132,16 @@ class ItemSpawnerCheat(CheatFeature):
         self.get_object_name_native: Optional[int] = None
         self.get_type_native: Optional[int] = None
         self.get_is_quest_item_native: Optional[int] = None
+        self.get_dead_player_native: Optional[int] = None
         self.use_spawn_command_native: Optional[int] = None
         self.get_server_instance_native: Optional[int] = None
         self.get_is_server_initialized_native: Optional[int] = None
         self.player_late_update_native: Optional[int] = None
+        self.client_requester = client_requester
+        self.client_state_reader = client_state_reader
+        self.client_state_resetter = client_state_resetter
+        self.client_capability = ClientCapabilityState.DISABLED
+        self._client_request_pending = False
 
     @property
     def catalog_by_id(self) -> Dict[int, SpawnableItem]:
@@ -182,6 +207,9 @@ class ItemSpawnerCheat(CheatFeature):
             self.get_type_native = self._compile(item_cls, "get_Type", 0)
             self.get_is_quest_item_native = self._compile(
                 item_cls, "get_IsQuestItem", 0
+            )
+            self.get_dead_player_native = self._compile(
+                item_cls, "get_DeadPlayer", 0
             )
             self.use_spawn_command_native = self._compile(
                 commands_cls, "UseSpawnCommand", 2
@@ -254,6 +282,18 @@ class ItemSpawnerCheat(CheatFeature):
                         self.get_is_quest_item_native, prefab_ptr
                     )
                 )
+                has_dead_player = bool(
+                    self.mono.executor.call(
+                        self.get_dead_player_native, prefab_ptr
+                    )
+                )
+                safety, safety_reason = self._assess_safety(
+                    item_id=item_id,
+                    spawn_key=spawn_key,
+                    category=category,
+                    is_quest_item=is_quest_item,
+                    has_dead_player=has_dead_player,
+                )
                 discovered.append(
                     SpawnableItem(
                         id=item_id,
@@ -261,6 +301,8 @@ class ItemSpawnerCheat(CheatFeature):
                         spawn_key=spawn_key,
                         category=category,
                         is_quest_item=is_quest_item,
+                        safety=safety,
+                        safety_reason=safety_reason,
                     )
                 )
             except Exception:
@@ -312,8 +354,45 @@ class ItemSpawnerCheat(CheatFeature):
             return ItemCategory.WEAPON
         return native_category
 
+    @classmethod
+    def _assess_safety(
+        cls,
+        item_id: int,
+        spawn_key: str,
+        category: ItemCategory,
+        is_quest_item: bool,
+        has_dead_player: bool = False,
+    ) -> tuple[SpawnSafety, str]:
+        """Returns a fail-closed safety decision for an uninitialized prefab."""
+        normalized = spawn_key.replace(" ", "").lower()
+        if (
+            item_id == 53
+            or normalized in cls.BLOCKED_SPAWN_KEYS
+            or has_dead_player
+        ):
+            return SpawnSafety.BLOCKED, "network_actor_requires_player_state"
+        if is_quest_item:
+            return SpawnSafety.CONFIRM_REQUIRED, "quest_item"
+        if category == ItemCategory.FISH:
+            return SpawnSafety.CONFIRM_REQUIRED, "creature_prefab"
+        if category == ItemCategory.UNKNOWN:
+            return SpawnSafety.CONFIRM_REQUIRED, "unknown_prefab"
+        if normalized in cls.CONFIRM_SPAWN_KEYS:
+            return SpawnSafety.CONFIRM_REQUIRED, "explosive_item"
+        return SpawnSafety.SAFE, ""
+
     def select_item(self, item_id: int) -> Optional[SpawnableItem]:
         item = self.catalog_by_id.get(item_id)
+        if item and not item.is_selectable:
+            self._set_action(
+                "spawner_blocked",
+                f"ID {item.id}: {item.display_name} is blocked for crash safety.",
+                item_id=item.id,
+                item_name=item.display_name,
+                reason=item.safety_reason,
+            )
+            self._record("item_selection_blocked", item=item.to_dict())
+            return None
         if item:
             self.selected_item = item
             self._set_action(
@@ -401,6 +480,10 @@ class ItemSpawnerCheat(CheatFeature):
         return bytes(stub)
 
     def _dispatch_spawn_on_main_thread(self, managed_name: int) -> None:
+        with MAIN_THREAD_PATCH_LOCK:
+            self._dispatch_spawn_on_main_thread_locked(managed_name)
+
+    def _dispatch_spawn_on_main_thread_locked(self, managed_name: int) -> None:
         """Runs Unity/FishNet spawning once from the game's main update thread."""
         if (
             not self.pm
@@ -498,6 +581,16 @@ class ItemSpawnerCheat(CheatFeature):
             )
             self._record("spawn_rejected", reason="no_selection")
             return False
+        if not item.is_selectable:
+            self._set_action(
+                "spawner_blocked",
+                f"ID {item.id}: {item.display_name} is blocked for crash safety.",
+                item_id=item.id,
+                item_name=item.display_name,
+                reason=item.safety_reason,
+            )
+            self._record("spawn_rejected", reason="blocked", item=item.to_dict())
+            return False
         if not self.pm or not self.mono or not self.use_spawn_command_native:
             self._set_action(
                 "spawner_not_attached", "Item spawner is not attached to the game."
@@ -515,6 +608,8 @@ class ItemSpawnerCheat(CheatFeature):
 
         try:
             if not self.is_server_authorized():
+                if self.client_requester:
+                    return self._request_client_spawn(item, now)
                 self._set_action(
                     "spawner_not_server",
                     "Item spawning is limited to single-player or the host.",
@@ -554,17 +649,121 @@ class ItemSpawnerCheat(CheatFeature):
             )
             return False
 
+    def _request_client_spawn(self, item: SpawnableItem, now: float) -> bool:
+        """Queues one fail-closed private-lobby ServerRpc request."""
+        if not self.client_requester:
+            return False
+        if item.safety != SpawnSafety.SAFE or item.category not in {
+            ItemCategory.ITEM,
+            ItemCategory.WEAPON,
+        }:
+            self.client_capability = ClientCapabilityState.REJECTED
+            self._set_action(
+                "spawner_client_unsafe",
+                "Joined-client requests only allow safe normal items and weapons.",
+            )
+            self._record(
+                "client_spawn_rejected", reason="unsafe_item", item=item.to_dict()
+            )
+            return False
+        if now - self._last_client_spawn_at < self.CLIENT_SPAWN_COOLDOWN_SECONDS:
+            self._set_action(
+                "spawner_client_cooldown",
+                "Joined-client request cooldown active; please wait.",
+            )
+            return False
+        if not self.client_requester(item.id):
+            self.client_capability = ClientCapabilityState.FAILED_CLOSED
+            self._set_action(
+                "spawner_client_disabled",
+                "Private-lobby consent is off or the previous request is unfinished.",
+            )
+            self._record(
+                "client_spawn_rejected",
+                reason="consent_or_pending",
+                item=item.to_dict(),
+            )
+            return False
+        self._last_client_spawn_at = now
+        self._client_request_pending = True
+        self.client_capability = ClientCapabilityState.PROBE_REQUIRED
+        self.is_enabled = True
+        self._set_action(
+            "spawner_client_pending",
+            f"Requested ID {item.id}: {item.display_name}; waiting for server sync.",
+            item_id=item.id,
+            item_name=item.display_name,
+        )
+        return True
+
+    def update(self) -> None:
+        if not self._client_request_pending or not self.client_state_reader:
+            return
+        state = int(self.client_state_reader())
+        if state in {1, 2}:
+            return
+        self._client_request_pending = False
+        item = self.selected_item
+        if state == 3:
+            self.client_capability = ClientCapabilityState.AVAILABLE
+            self._set_action(
+                "spawner_client_received",
+                "Server synchronized the requested item into your hand.",
+                item_id=item.id if item else -1,
+                item_name=item.display_name if item else "",
+            )
+            self._record(
+                "client_spawn_result",
+                state=state,
+                capability=self.client_capability.value,
+                item=item.to_dict() if item else None,
+            )
+        elif state < 0:
+            self.client_capability = ClientCapabilityState.FAILED_CLOSED
+            self._set_action(
+                "spawner_client_failed",
+                "The server did not synchronize the item; client spawning is disabled for this attempt.",
+                code=state,
+            )
+            self._record(
+                "client_spawn_result",
+                state=state,
+                capability=self.client_capability.value,
+                item=item.to_dict() if item else None,
+            )
+        if self.client_state_resetter:
+            self.client_state_resetter()
+
     def enable(self) -> bool:
         return self.spawn_selected()
 
     def disable(self) -> bool:
         self.is_enabled = False
+        self._client_request_pending = False
         return True
 
     def toggle(self) -> bool:
         return self.spawn_selected()
 
     def get_status_badge(self, language: str = "en") -> str:
+        if self._client_request_pending:
+            return (
+                "[bold yellow]等待服务器同步[/bold yellow]"
+                if language == "zh"
+                else "[bold yellow]WAITING FOR SERVER[/bold yellow]"
+            )
+        if self.client_capability == ClientCapabilityState.AVAILABLE:
+            return (
+                "[bold green]客户端请求可用[/bold green]"
+                if language == "zh"
+                else "[bold green]CLIENT REQUEST OK[/bold green]"
+            )
+        if self.client_capability == ClientCapabilityState.FAILED_CLOSED:
+            return (
+                "[bold red]客户端请求已关闭[/bold red]"
+                if language == "zh"
+                else "[bold red]CLIENT FAILED CLOSED[/bold red]"
+            )
         if self.selected_item:
             item = self.selected_item
             return f"[bold cyan]ID {item.id}: {item.display_name}[/bold cyan]"

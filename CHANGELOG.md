@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0rc1 - 2026-08-29
+
+### Added
+
+- Add a fail-closed assembly hash, Mono contract, and JIT entry compatibility gate for the updated game assembly.
+- Add a managed Unity-main-thread helper for F9 creature/player head aim, F11 item/creature labels, and an Insert mouse panel without installing files into the game directory.
+- Add explicit client capability states, partial joined-client health protection, and a private-lobby-only safe `Server.BuyItem` request probe with two-second throttling.
+
+### Fixed
+
+- Permanently block ID 53, `deadplayer`, and prefabs with a `DeadPlayer` component before selection or native spawning.
+- Resolve Mono exports from target memory or the attached module path instead of a hard-coded Steam location.
+- Serialize every temporary `Player.LateUpdate` patch through one shared lock and validate native prologues before patching.
+
+### Validation
+
+- Compile `HowToFishTrainer.Runtime.dll` against the current read-only game assemblies using the local .NET Framework compiler.
+- Add automated coverage for compatibility failure, spawn safety, client cooldowns, aim/ESP control state, and main-thread dispatch.
+- Live single-player and two-client validation remains required before creating a `v0.3.0-rc.1` tag.
+
 ## 0.2.0rc8 - 2026-08-27
 
 ### Fixed

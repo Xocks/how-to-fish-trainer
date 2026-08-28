@@ -9,6 +9,8 @@ from rich.layout import Layout
 from ..features import CheatFeature, SpawnableItem, get_default_features
 from .selector import ItemSelectorState
 from ..i18n import tr
+from ..models import SpawnSafety
+from ..compatibility import CompatibilityReport
 
 
 class TrainerUI:
@@ -26,6 +28,7 @@ class TrainerUI:
         features: Optional[List[CheatFeature]] = None,
         status_message: str = "Ready",
         language: str = "zh",
+        compatibility: Optional[CompatibilityReport] = None,
     ) -> Panel:
         """Constructs the complete trainer dashboard renderable."""
         # Top Header & Info
@@ -48,6 +51,28 @@ class TrainerUI:
             conn_info = Text.from_markup(
                 tr("waiting_info", language, process_name=process_name)
             )
+
+        compatibility_text = Text()
+        if compatibility:
+            if compatibility.compatible:
+                compatibility_text.append(
+                    tr(
+                        "compatibility_ok",
+                        language,
+                        build=compatibility.build_label,
+                        sha=compatibility.assembly_sha256[:12],
+                    ),
+                    style="green",
+                )
+            else:
+                compatibility_text.append(
+                    tr(
+                        "compatibility_bad",
+                        language,
+                        reason=", ".join(compatibility.errors),
+                    ),
+                    style="bold red",
+                )
 
         # Cheats Table
         table = Table(title=tr("table_title", language), expand=True, show_lines=True)
@@ -88,6 +113,7 @@ class TrainerUI:
         content = Group(
             header_text,
             conn_info,
+            compatibility_text,
             Text(""),
             table,
             footer_text,
@@ -135,7 +161,10 @@ class TrainerUI:
             cells = []
             for item in visible_items[row_start : row_start + column_count]:
                 item_name = Text(item.display_name)
-                if item.requires_confirmation:
+                if item.safety == SpawnSafety.BLOCKED:
+                    item_name.stylize("dim red")
+                    item_name.append(" ×", style="bold red")
+                elif item.requires_confirmation:
                     item_name.append(" !", style="bold red")
                 cells.extend((str(item.id), item_name))
 

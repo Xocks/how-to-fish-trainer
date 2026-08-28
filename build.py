@@ -3,17 +3,24 @@
 import subprocess
 import sys
 
+from build_runtime import build_runtime
+
 
 def build():
+    runtime_dll = build_runtime()
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--noconfirm",
+        "--specpath",
+        ".work",
         "--onefile",
         "--console",
         "--name",
         "HowToFishTrainer",
+        "--add-data",
+        f"{runtime_dll};runtime",
         "--paths",
         "src",
         "--optimize",

@@ -10,6 +10,7 @@ from howtofish_cheat.features.spawner import (
     ItemSpawnerCheat,
     SpawnableItem,
 )
+from howtofish_cheat.models import SpawnSafety
 from howtofish_cheat.trainer import HowToFishTrainer
 
 
@@ -22,6 +23,7 @@ def _catalog_cheat():
     cheat.get_object_name_native = 3
     cheat.get_type_native = 4
     cheat.get_is_quest_item_native = 5
+    cheat.get_dead_player_native = 6
 
     string_values = {
         0x1010: "鳕鱼",
@@ -42,6 +44,8 @@ def _catalog_cheat():
             return {0xA000: 1, 0xB000: 2}[args[0]]
         if func == 5:
             return int(args[0] == 0xB000)
+        if func == 6:
+            return 0
         raise AssertionError((func, args))
 
     mono.executor.call.side_effect = call
@@ -53,8 +57,24 @@ def test_catalog_scan_reads_names_categories_and_quest_flags():
     catalog = cheat.load_catalog()
 
     assert catalog == [
-        SpawnableItem(10, "鳕鱼", "codfish", ItemCategory.FISH, False),
-        SpawnableItem(20, "Rifle", "basicrifle", ItemCategory.WEAPON, True),
+        SpawnableItem(
+            10,
+            "鳕鱼",
+            "codfish",
+            ItemCategory.FISH,
+            False,
+            SpawnSafety.CONFIRM_REQUIRED,
+            "creature_prefab",
+        ),
+        SpawnableItem(
+            20,
+            "Rifle",
+            "basicrifle",
+            ItemCategory.WEAPON,
+            True,
+            SpawnSafety.CONFIRM_REQUIRED,
+            "quest_item",
+        ),
     ]
     assert cheat.select_item(20) == catalog[1]
     assert cheat.select_item(99) is None
@@ -86,6 +106,53 @@ def test_prefab_catalog_falls_back_to_build_categories():
     assert ItemSpawnerCheat._classify_item(
         56, "beer", ItemCategory.ITEM
     ) == ItemCategory.ITEM
+
+
+def test_dead_player_prefab_is_hard_blocked_and_never_selectable():
+    safety, reason = ItemSpawnerCheat._assess_safety(
+        53, "deadplayer", ItemCategory.ITEM, False, has_dead_player=True
+    )
+    assert safety == SpawnSafety.BLOCKED
+    assert reason == "network_actor_requires_player_state"
+
+    cheat = ItemSpawnerCheat(pm=MagicMock(), mono=MagicMock(), patcher=MagicMock())
+    blocked = SpawnableItem(
+        53,
+        "角色",
+        "deadplayer",
+        ItemCategory.ITEM,
+        False,
+        SpawnSafety.BLOCKED,
+        reason,
+    )
+    cheat.catalog = [blocked]
+    assert cheat.select_item(53) is None
+    assert cheat.selected_item is None
+
+
+def test_joined_client_request_uses_safe_allowlist_and_two_second_cooldown():
+    requester = MagicMock(return_value=True)
+    times = iter([10.0, 10.1])
+    cheat = ItemSpawnerCheat(
+        pm=MagicMock(),
+        mono=MagicMock(),
+        patcher=MagicMock(),
+        clock=lambda: next(times),
+        client_requester=requester,
+    )
+    cheat.mono.executor = MagicMock()
+    item = SpawnableItem(54, "Rifle", "assaultrifle", ItemCategory.WEAPON)
+    cheat.catalog = [item]
+    cheat.select_item(54)
+    cheat.use_spawn_command_native = 1
+    cheat.get_server_instance_native = 2
+    cheat.get_is_server_initialized_native = 3
+    cheat.mono.executor.call.side_effect = lambda func, *args: 0
+
+    assert cheat.spawn_selected() is True
+    requester.assert_called_once_with(54)
+    assert cheat.spawn_selected() is False
+    assert "cooldown" in cheat.last_action_message.lower()
 
 
 def test_main_thread_dispatch_patches_one_late_update_and_restores():

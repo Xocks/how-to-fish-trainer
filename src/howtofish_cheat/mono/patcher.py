@@ -4,6 +4,8 @@ import ctypes
 from typing import Dict, Optional
 import pymem
 
+from ..compatibility import validate_native_entry
+
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 VirtualProtectEx = kernel32.VirtualProtectEx
@@ -84,15 +86,19 @@ class MethodPatcher:
     def register_method(self, patch_id: str, address: int) -> None:
         """Caches original bytes of a method before any patching occurs."""
         if patch_id not in self.patches:
+            validate_native_entry(self.pm, address)
             orig = self.pm.read_bytes(address, 1)
             if orig == b"\xC3":
-                return
+                raise RuntimeError(
+                    f"Refusing to register already-returning method {patch_id} at 0x{address:X}"
+                )
             self.patches[patch_id] = MemoryPatch(self.pm, address, b"\xC3", original_bytes=orig, name=patch_id)
 
     def register_custom(self, patch_id: str, address: int, patch_bytes: bytes, min_backup_len: int = 32) -> None:
         """Caches original bytes for a custom byte patch with safe backup length."""
         if patch_id not in self.patches:
             backup_len = max(len(patch_bytes), min_backup_len)
+            validate_native_entry(self.pm, address)
             orig = self.pm.read_bytes(address, backup_len)
             self.patches[patch_id] = MemoryPatch(self.pm, address, patch_bytes, original_bytes=orig, name=patch_id)
 
@@ -102,6 +108,7 @@ class MethodPatcher:
             patch = self.patches[patch_id]
             patch.patch_bytes = b"\xC3"
         else:
+            validate_native_entry(self.pm, address)
             orig = self.pm.read_bytes(address, 1)
             patch = MemoryPatch(self.pm, address, b"\xC3", original_bytes=orig, name=patch_id)
             self.patches[patch_id] = patch
@@ -116,6 +123,7 @@ class MethodPatcher:
                 patch.original_bytes = self.pm.read_bytes(address, max(len(patch_bytes), 32))
             patch.patch_bytes = patch_bytes
         else:
+            validate_native_entry(self.pm, address)
             orig = self.pm.read_bytes(address, max(len(patch_bytes), 32))
             patch = MemoryPatch(self.pm, address, patch_bytes, original_bytes=orig, name=patch_id)
             self.patches[patch_id] = patch

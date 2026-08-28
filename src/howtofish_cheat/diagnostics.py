@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -15,9 +16,9 @@ from typing import Any, Optional
 
 from . import __version__
 
-BASELINE_GAME_BUILD = "24911270"
+BASELINE_GAME_BUILD = "2026-08-28"
 BASELINE_ASSEMBLY_SHA256 = (
-    "FA8C6F47874E69FE07B9C978F35CC05372DF2BDD3535DE5F5FAC355F999A5762"
+    "0491C7B5286CA37B42D506113A9C7E32E0AD8D9D121C5FE3BE8E67CE9E9D036B"
 )
 
 
@@ -113,6 +114,22 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
         root, output_dir / f"spawn-test-{timestamp}.zip"
     )
 
+    runtime_dll = (
+        root
+        / "runtime"
+        / "HowToFishTrainer.Runtime"
+        / "bin"
+        / "Release"
+        / "HowToFishTrainer.Runtime.dll"
+    )
+    runtime_sha256 = None
+    if runtime_dll.is_file():
+        digest = hashlib.sha256()
+        with runtime_dll.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        runtime_sha256 = digest.hexdigest().upper()
+
     manifest = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "trainer_version": __version__,
@@ -122,6 +139,7 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
         "git_branch": _git_value(root, "branch", "--show-current"),
         "git_status": _git_value(root, "status", "--short"),
         "included_log": latest_log.name if latest_log else None,
+        "runtime_helper_sha256": runtime_sha256,
         "privacy": "No saves, complete Unity logs, chat, or credentials are included.",
     }
 
