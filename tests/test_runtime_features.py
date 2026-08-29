@@ -9,7 +9,7 @@ from howtofish_cheat.features.runtime import (
     ManagedRuntimeController,
     MousePanelFeature,
 )
-from howtofish_cheat.models import AimSettings, AimTargetKind
+from howtofish_cheat.models import AimSettings, AimTargetKind, EspSettings
 from howtofish_cheat.mono.main_thread import MainThreadDispatcher
 
 
@@ -20,6 +20,22 @@ def test_aim_settings_are_clamped_and_break_angle_tracks_acquire():
     assert settings.break_angle == 45
     assert settings.smoothing == 1
     assert settings.allow_players is True
+    assert settings.nearest_360 is True
+    assert settings.recoil_compensation == 1.0
+
+
+def test_aim_and_esp_extended_settings_are_clamped():
+    aim = AimSettings(
+        recoil_compensation=3,
+        switch_hysteresis=-1,
+    ).normalized()
+    esp = EspSettings(999, 999, 99, 144).normalized()
+    assert aim.recoil_compensation == 1
+    assert aim.switch_hysteresis == 0
+    assert esp.max_distance == 500
+    assert esp.max_labels == 500
+    assert esp.font_size == 36
+    assert esp.projection_hz == 60
 
 
 def test_main_thread_stub_calls_function_and_waits_for_release():
@@ -47,6 +63,8 @@ def test_runtime_controller_loads_helper_and_exposes_toggles(mock_path, tmp_path
     )
     assert "Initialize" in controller.methods
     assert "RequestClientItem" in controller.methods
+    assert "RequestSelectedSpawn" in controller.methods
+    assert "SetSelectedSpawnId" in controller.methods
 
 
 def test_runtime_feature_hotkeys_and_status_are_stable():

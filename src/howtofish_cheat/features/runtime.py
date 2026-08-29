@@ -55,6 +55,8 @@ class ManagedRuntimeController:
         self._status_lock = threading.Lock()
         self._status_word = 0
         self._status_polled_at = float("-inf")
+        self._last_catalog_count: Optional[int] = None
+        self._last_managed_spawn_state: Optional[int] = None
 
     def _record(self, event: str, **data) -> None:
         if self.event_sink:
@@ -86,6 +88,12 @@ class ManagedRuntimeController:
                 "GetLastErrorCode": 0,
                 "GetStatusWord": 0,
                 "GetPrivateLobbyConsent": 0,
+                "SetSelectedSpawnId": 1,
+                "RequestSelectedSpawn": 0,
+                "GetSelectedSpawnId": 0,
+                "GetSelectedSpawnMode": 0,
+                "GetSelectedSpawnState": 0,
+                "GetCatalogCount": 0,
                 "RequestClientItem": 1,
                 "GetClientSpawnState": 0,
                 "ResetClientSpawnState": 0,
@@ -157,6 +165,18 @@ class ManagedRuntimeController:
             if force or now - self._status_polled_at >= 0.5:
                 self._status_word = self.get_int("GetStatusWord")
                 self._status_polled_at = now
+                catalog_count = self.get_int("GetCatalogCount")
+                spawn_state = self.get_int("GetSelectedSpawnState")
+                if catalog_count != self._last_catalog_count:
+                    self._last_catalog_count = catalog_count
+                    self._record(
+                        "managed_catalog_state", count=catalog_count
+                    )
+                if spawn_state != self._last_managed_spawn_state:
+                    self._last_managed_spawn_state = spawn_state
+                    self._record(
+                        "managed_spawn_state", state=spawn_state
+                    )
         return self._status_word
 
     def shutdown(self) -> None:
@@ -196,6 +216,59 @@ class ManagedRuntimeController:
                 error=str(exc),
             )
             return False
+
+    def set_selected_spawn_id(self, item_id: int) -> bool:
+        """Queues an ID selection; Unity applies it on its main thread."""
+        if not self.initialize() or not 0 <= int(item_id) <= 255:
+            return False
+        try:
+            accepted = bool(
+                self.mono.executor.call(
+                    self.methods["SetSelectedSpawnId"], int(item_id)
+                )
+            )
+            self._record(
+                "managed_spawn_selection",
+                item_id=int(item_id),
+                accepted=accepted,
+            )
+            return accepted
+        except Exception as exc:
+            self._record(
+                "managed_runtime_failed",
+                stage="SetSelectedSpawnId",
+                error=str(exc),
+            )
+            return False
+
+    def request_selected_spawn(self) -> bool:
+        """Queues the managed panel/F7 selection for main-thread spawning."""
+        if not self.initialize():
+            return False
+        try:
+            accepted = bool(
+                self.mono.executor.call(self.methods["RequestSelectedSpawn"])
+            )
+            self._record(
+                "managed_spawn_requested",
+                accepted=accepted,
+                selected_id=self.get_int("GetSelectedSpawnId", -1),
+                selected_mode=self.get_int("GetSelectedSpawnMode"),
+            )
+            return accepted
+        except Exception as exc:
+            self._record(
+                "managed_runtime_failed",
+                stage="RequestSelectedSpawn",
+                error=str(exc),
+            )
+            return False
+
+    def get_selected_spawn_state(self) -> int:
+        return self.get_int("GetSelectedSpawnState")
+
+    def get_catalog_count(self) -> int:
+        return self.get_int("GetCatalogCount")
 
     def get_client_spawn_state(self) -> int:
         return self.get_int("GetClientSpawnState")
@@ -253,9 +326,9 @@ class AimAssistCheat(RuntimeToggleFeature):
         super().__init__(
             controller,
             name="Head Aim",
-            description="Locks guns to creature heads while ADS + right mouse; players require private-lobby consent.",
+            description="360-degree nearest-fish aim while ADS + right mouse, with recoil compensation.",
             name_zh="枪械锁头",
-            description_zh="持枪瞄准并按住右键时锁定头部；玩家目标需私有测试房确认。",
+            description_zh="持枪瞄准并按住右键时 360°锁定最近的鱼，并补偿后坐力。",
             hotkey=hotkey,
         )
 
@@ -288,9 +361,9 @@ class EspOverlayCheat(RuntimeToggleFeature):
         super().__init__(
             controller,
             name="Item / Creature ESP",
-            description="Shows categorized item and creature labels with distance and obstruction dimming.",
+            description="Shows 60 Hz item/creature labels with adjustable font size and staggered occlusion.",
             name_zh="物品 / 生物透视",
-            description_zh="显示物品和生物名称、距离、分类颜色，并将遮挡目标变暗。",
+            description_zh="最高 60 FPS 显示物品/生物标签，支持字体调节与分批遮挡检测。",
             hotkey=hotkey,
         )
 
@@ -318,8 +391,8 @@ class MousePanelFeature(RuntimeToggleFeature):
         super().__init__(
             controller,
             name="Mouse Control Panel",
-            description="Opens a mouse-driven combat, ESP, experiment, and diagnostics panel.",
+            description="Opens Combat, ESP, Spawn, Experiment, and Diagnostics without moving the camera.",
             name_zh="鼠标控制面板",
-            description_zh="打开可用鼠标操作的战斗、透视、实验和诊断面板。",
+            description_zh="打开战斗、透视、生成器、实验和诊断面板，鼠标不会带动视角。",
             hotkey=hotkey,
         )

@@ -70,6 +70,14 @@ class CompatibilityGate:
         ("Assembly-CSharp", "Player", "LateUpdate", 0),
         ("Assembly-CSharp", "PlayerAimAssist", "GetRotationDelta", 3),
         ("Assembly-CSharp", "Server", "BuyItem", 6),
+        ("Assembly-CSharp", "PlayerCamera", "ToggleMouse", 1),
+        (
+            "Assembly-CSharp",
+            "PlayerToolMovement",
+            "ResetSwayRecoilPosRotVel",
+            0,
+        ),
+        ("Assembly-CSharp", "DazedCommands", "UseSpawnCommand", 2),
     )
     REQUIRED_FIELDS = (
         ("Assembly-CSharp", "Player", "LocalPlayer"),
@@ -77,6 +85,10 @@ class CompatibilityGate:
         ("Assembly-CSharp", "Creature", "_headPos"),
         ("Assembly-CSharp", "PlayerBody", "_head"),
         ("Assembly-CSharp", "PlayerCamera", "_rot"),
+        ("Assembly-CSharp", "PlayerCamera", "_recoilCur"),
+        ("Assembly-CSharp", "PlayerCamera", "_recoilTar"),
+        ("Assembly-CSharp", "PlayerCamera", "_rawLookInput"),
+        ("Assembly-CSharp", "GameInfo", "_nameToSpawnable"),
     )
 
     def __init__(self, supported_hashes: Optional[dict[str, str]] = None):

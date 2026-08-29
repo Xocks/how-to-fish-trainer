@@ -55,6 +55,7 @@ def build_runtime(managed_dir: Path = DEFAULT_MANAGED) -> Path:
         "UnityEngine.CoreModule.dll",
         "UnityEngine.IMGUIModule.dll",
         "UnityEngine.InputLegacyModule.dll",
+        "Unity.InputSystem.dll",
         "UnityEngine.PhysicsModule.dll",
         "UnityEngine.TextRenderingModule.dll",
     ]

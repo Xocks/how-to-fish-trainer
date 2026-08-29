@@ -63,8 +63,8 @@ def test_catalog_scan_reads_names_categories_and_quest_flags():
             "codfish",
             ItemCategory.FISH,
             False,
-            SpawnSafety.CONFIRM_REQUIRED,
-            "creature_prefab",
+            SpawnSafety.SAFE,
+            "",
         ),
         SpawnableItem(
             20,
@@ -128,6 +128,40 @@ def test_dead_player_prefab_is_hard_blocked_and_never_selectable():
     cheat.catalog = [blocked]
     assert cheat.select_item(53) is None
     assert cheat.selected_item is None
+
+
+def test_normal_fish_is_safe_but_quest_and_explosive_still_confirm():
+    assert ItemSpawnerCheat._assess_safety(
+        10, "codfish", ItemCategory.FISH, False
+    ) == (SpawnSafety.SAFE, "")
+    assert ItemSpawnerCheat._assess_safety(
+        10, "questfish", ItemCategory.FISH, True
+    ) == (SpawnSafety.CONFIRM_REQUIRED, "quest_item")
+    assert ItemSpawnerCheat._assess_safety(
+        54, "dynamite", ItemCategory.WEAPON, False
+    ) == (SpawnSafety.CONFIRM_REQUIRED, "explosive_item")
+
+
+def test_managed_selection_is_mirrored_and_f8_prefers_main_thread_request():
+    selection_writer = MagicMock(return_value=True)
+    spawn_requester = MagicMock(return_value=True)
+    state_reader = MagicMock(return_value=3)
+    cheat = ItemSpawnerCheat(
+        pm=MagicMock(),
+        mono=MagicMock(),
+        patcher=MagicMock(),
+        managed_selection_writer=selection_writer,
+        managed_spawn_requester=spawn_requester,
+        managed_spawn_state_reader=state_reader,
+    )
+    item = SpawnableItem(10, "鳕鱼", "codfish", ItemCategory.FISH)
+    cheat.catalog = [item]
+
+    assert cheat.select_item(10) == item
+    selection_writer.assert_called_once_with(10)
+    assert cheat.spawn_selected() is True
+    spawn_requester.assert_called_once_with()
+    assert cheat.last_action_key == "spawner_managed_queued"
 
 
 def test_joined_client_request_uses_safe_allowlist_and_two_second_cooldown():

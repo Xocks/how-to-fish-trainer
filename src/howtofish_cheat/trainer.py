@@ -214,6 +214,15 @@ class HowToFishTrainer:
         item_spawner.client_requester = runtime_controller.request_client_item
         item_spawner.client_state_reader = runtime_controller.get_client_spawn_state
         item_spawner.client_state_resetter = runtime_controller.reset_client_spawn_state
+        item_spawner.managed_selection_writer = (
+            runtime_controller.set_selected_spawn_id
+        )
+        item_spawner.managed_spawn_requester = (
+            runtime_controller.request_selected_spawn
+        )
+        item_spawner.managed_spawn_state_reader = (
+            runtime_controller.get_selected_spawn_state
+        )
         aim_cheat = AimAssistCheat(runtime_controller, hotkey="F9")
         esp_cheat = EspOverlayCheat(runtime_controller, hotkey="F11")
         mouse_panel = MousePanelFeature(runtime_controller, hotkey="Insert")

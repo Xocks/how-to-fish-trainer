@@ -42,7 +42,10 @@ class SpawnableItem:
     @property
     def requires_confirmation(self) -> bool:
         """Whether selecting this item must show the risk confirmation prompt."""
-        return self.safety == SpawnSafety.CONFIRM_REQUIRED or (
+        return self.safety in {
+            SpawnSafety.CONFIRM_REQUIRED,
+            SpawnSafety.HIGH_RISK_LOCAL,
+        } or (
             self.safety != SpawnSafety.BLOCKED
             and (self.is_quest_item or self.category == ItemCategory.UNKNOWN)
         )
@@ -101,6 +104,9 @@ class ItemSpawnerCheat(CheatFeature):
         client_requester: Optional[Callable[[int], bool]] = None,
         client_state_reader: Optional[Callable[[], int]] = None,
         client_state_resetter: Optional[Callable[[], None]] = None,
+        managed_selection_writer: Optional[Callable[[int], bool]] = None,
+        managed_spawn_requester: Optional[Callable[[], bool]] = None,
+        managed_spawn_state_reader: Optional[Callable[[], int]] = None,
     ):
         super().__init__(
             name="Item Spawner",
@@ -140,6 +146,9 @@ class ItemSpawnerCheat(CheatFeature):
         self.client_requester = client_requester
         self.client_state_reader = client_state_reader
         self.client_state_resetter = client_state_resetter
+        self.managed_selection_writer = managed_selection_writer
+        self.managed_spawn_requester = managed_spawn_requester
+        self.managed_spawn_state_reader = managed_spawn_state_reader
         self.client_capability = ClientCapabilityState.DISABLED
         self._client_request_pending = False
 
@@ -373,8 +382,6 @@ class ItemSpawnerCheat(CheatFeature):
             return SpawnSafety.BLOCKED, "network_actor_requires_player_state"
         if is_quest_item:
             return SpawnSafety.CONFIRM_REQUIRED, "quest_item"
-        if category == ItemCategory.FISH:
-            return SpawnSafety.CONFIRM_REQUIRED, "creature_prefab"
         if category == ItemCategory.UNKNOWN:
             return SpawnSafety.CONFIRM_REQUIRED, "unknown_prefab"
         if normalized in cls.CONFIRM_SPAWN_KEYS:
@@ -395,6 +402,14 @@ class ItemSpawnerCheat(CheatFeature):
             return None
         if item:
             self.selected_item = item
+            if self.managed_selection_writer:
+                try:
+                    self.managed_selection_writer(item.id)
+                except Exception:
+                    logger.debug(
+                        "Failed to mirror selection into managed UI",
+                        exc_info=True,
+                    )
             self._set_action(
                 "spawner_selected",
                 f"Selected ID {item.id}: {item.display_name}",
@@ -574,6 +589,23 @@ class ItemSpawnerCheat(CheatFeature):
 
     def _spawn_selected_locked(self) -> bool:
         """Implements one serialized spawn request."""
+        if self.managed_spawn_requester:
+            try:
+                if self.managed_spawn_requester():
+                    state = (
+                        int(self.managed_spawn_state_reader())
+                        if self.managed_spawn_state_reader
+                        else 3
+                    )
+                    self._set_action(
+                        "spawner_managed_queued",
+                        "Managed spawn request queued on Unity's main thread.",
+                        state=state,
+                    )
+                    self._record("managed_spawn_queued", state=state)
+                    return True
+            except Exception:
+                logger.debug("Managed spawn request failed", exc_info=True)
         item = self.selected_item
         if not item:
             self._set_action(
