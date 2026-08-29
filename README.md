@@ -13,7 +13,7 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 
 - **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
 - **Current branch:** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
-- **Current code version:** `0.3.0rc2` (the RC tag waits for live validation)
+- **Current code version:** `0.3.0rc2.post1` (the RC tag waits for live validation)
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
@@ -27,7 +27,7 @@ Compared with the upstream baseline, this branch adds:
 
 | Modification | Description |
 | :--- | :--- |
-| **F7 runtime item catalog** | Scans the game's own `GameInfo.GetSpawnable(byte)` catalog and reads IDs, display names, spawn keys, categories, and quest flags. The catalog is rebuilt after reconnecting. |
+| **F7 runtime item catalog** | Shows the game's `GameInfo.GetSpawnable(byte)` IDs first, then merges named/skin, resource Item, and engine entries under synthetic selection IDs above 1000. The catalog is rebuilt after reconnecting. |
 | **F8 native item spawning** | Calls `DazedCommands.UseSpawnCommand` to spawn the selected item about two metres in front of the camera. It is restricted to single-player or the host and has a 500ms cooldown. |
 | **Special-item safeguards** | Quest and unknown items receive a red `!` marker and require a second confirmation. |
 | **Character hard block** | ID 53, `deadplayer`, and prefabs carrying `DeadPlayer` are marked with `×` and cannot reach the native spawn call. |
@@ -55,7 +55,7 @@ This remains an external process-memory trainer. It does not replace game files 
 | **F4** | **Unlimited Ammo** | Infinite ammunition for all firearms without magazine depletion or forced reloads. |
 | **F5** | **Damage Multiplier** | Cycles damage multiplier for firearms, melee weapons, and fists: **`1x` $\rightarrow$ `2x` $\rightarrow$ `5x` $\rightarrow$ `10x` $\rightarrow$ `One-Shot Kill (99999)`**. |
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
-| **F7** | **Select Spawn Item** | Opens a responsive `ID / Item` grid: wide windows use four pairs and taller windows show more rows, while narrow windows reduce the column count automatically. A red `!` marks confirmation-required items. |
+| **F7** | **Select Spawn Item** | Official entries keep their native IDs; named/resource/engine entries use synthetic IDs above 1000. A red `!` marks confirmation-required items and `×` marks hard blocks. |
 | **F8** | **Spawn Selected Item** | Solo/host spawns in front; a consented private-lobby client may request one safe item directly into its hand. |
 | **F9** | **360° Head Aim** | Locks the nearest fish by world distance and compensates camera/fire-point recoil. |
 | **F11** | **Item / Creature ESP** | Toggles categorized 60 Hz name and distance labels. |

@@ -11,7 +11,7 @@ namespace HowToFishTrainer.Runtime
     {
         private static TrainerRuntimeBehaviour _instance;
         private static volatile bool _aimEnabled, _espEnabled, _menuOpen, _privateLobbyConsent, _shutdownRequested;
-        private static volatile int _clientSpawnRequest = -1, _selectedSpawnIdRequest = -2;
+        private static volatile int _clientSpawnRequest = -1, _selectedSpawnIdRequest = -2, _selectedCatalogIndexRequest = -1;
         private static volatile bool _selectedSpawnRequested;
 
         public static bool Initialize()
@@ -40,9 +40,16 @@ namespace HowToFishTrainer.Runtime
             return 1;
         }
 
+        public static int SetSelectedCatalogIndex(int catalogIndex)
+        {
+            if (ReferenceEquals(_instance, null) || catalogIndex < 0 || catalogIndex >= _instance.CatalogCount) return 0;
+            _selectedCatalogIndexRequest = catalogIndex;
+            return 1;
+        }
+
         public static int RequestSelectedSpawn()
         {
-            if (ReferenceEquals(_instance, null) || (_instance.SelectedSpawnMode == 0 && _selectedSpawnIdRequest == -2)) return 0;
+            if (ReferenceEquals(_instance, null) || (_instance.SelectedSpawnMode == 0 && _selectedSpawnIdRequest == -2 && _selectedCatalogIndexRequest < 0)) return 0;
             _selectedSpawnRequested = true;
             return 1;
         }
@@ -51,6 +58,7 @@ namespace HowToFishTrainer.Runtime
         public static int GetSelectedSpawnMode() { return !ReferenceEquals(_instance, null) ? _instance.SelectedSpawnMode : 0; }
         public static int GetSelectedSpawnState() { return !ReferenceEquals(_instance, null) ? _instance.SelectedSpawnState : 0; }
         public static int GetCatalogCount() { return !ReferenceEquals(_instance, null) ? _instance.CatalogCount : 0; }
+        public static string GetCatalogEntry(int catalogIndex) { return !ReferenceEquals(_instance, null) ? _instance.GetCatalogEntry(catalogIndex) : string.Empty; }
         public static int GetEspCount() { return !ReferenceEquals(_instance, null) ? _instance.EspCount : 0; }
         public static int GetAimTargetKind() { return !ReferenceEquals(_instance, null) ? _instance.AimTargetKind : 0; }
         public static int GetLastErrorCode() { return !ReferenceEquals(_instance, null) ? _instance.LastErrorCode : 0; }
@@ -90,6 +98,7 @@ namespace HowToFishTrainer.Runtime
             _aimEnabled = _espEnabled = _menuOpen = _privateLobbyConsent = false;
             _clientSpawnRequest = -1;
             _selectedSpawnIdRequest = -2;
+            _selectedCatalogIndexRequest = -1;
             _selectedSpawnRequested = false;
             _shutdownRequested = true;
         }
@@ -103,6 +112,12 @@ namespace HowToFishTrainer.Runtime
                 var id = _selectedSpawnIdRequest;
                 _selectedSpawnIdRequest = -2;
                 _instance.SelectSpawnById(id, true);
+            }
+            if (_selectedCatalogIndexRequest >= 0)
+            {
+                var index = _selectedCatalogIndexRequest;
+                _selectedCatalogIndexRequest = -1;
+                _instance.SelectSpawnByCatalogIndex(index, true);
             }
             if (_selectedSpawnRequested)
             {
@@ -177,6 +192,7 @@ namespace HowToFishTrainer.Runtime
 
         private readonly List<OverlayEntry> _overlayEntries = new List<OverlayEntry>(DefaultMaxLabels);
         private readonly List<SpawnCatalogEntry> _catalog = new List<SpawnCatalogEntry>(256);
+        private string[] _catalogExport = new string[0];
         private readonly List<GameObject> _rawClones = new List<GameObject>(MaxRawClones);
         private readonly List<InputAction> _blockedActions = new List<InputAction>(3);
         private readonly List<bool> _blockedActionStates = new List<bool>(3);
@@ -208,7 +224,13 @@ namespace HowToFishTrainer.Runtime
         public int SelectedSpawnId { get { return _selectedSpawn != null ? _selectedSpawn.Id : -1; } }
         public int SelectedSpawnMode { get { return _selectedSpawn == null ? 0 : (_selectedSpawn.IsNative ? 1 : 2); } }
         public int SelectedSpawnState { get; private set; }
-        public int CatalogCount { get { return _catalog.Count; } }
+        public int CatalogCount { get { return _catalogExport.Length; } }
+
+        internal string GetCatalogEntry(int index)
+        {
+            var snapshot = _catalogExport;
+            return index >= 0 && index < snapshot.Length ? snapshot[index] : string.Empty;
+        }
 
         internal void ApplyControlState(bool aim, bool esp, bool menu, bool consent)
         {
@@ -564,7 +586,28 @@ namespace HowToFishTrainer.Runtime
                 var category = a.Category.CompareTo(b.Category); if (category != 0) return category;
                 var id = a.Id.CompareTo(b.Id); return id != 0 ? id : string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
             });
+            BuildCatalogExport();
             if (_selectedSpawn != null && _selectedSpawn.Id >= 0) SelectSpawnById(_selectedSpawn.Id, _selectionConfirmed);
+        }
+
+        private static string ExportText(string value)
+        {
+            return (value ?? string.Empty).Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+        }
+
+        private void BuildCatalogExport()
+        {
+            var snapshot = new string[_catalog.Count];
+            for (var i = 0; i < _catalog.Count; i++)
+            {
+                var entry = _catalog[i];
+                snapshot[i] = string.Join("\t", new[]
+                {
+                    i.ToString(), entry.Id.ToString(), ExportText(entry.DisplayName), ExportText(entry.SpawnKey),
+                    ((int)entry.Source).ToString(), ((int)entry.Category).ToString(), ((int)entry.Safety).ToString(), ExportText(entry.SafetyReason)
+                });
+            }
+            _catalogExport = snapshot;
         }
 
         private void AddNativeEntry(Item item, int id, SpawnCatalogSource source, HashSet<int> seen)
@@ -631,6 +674,19 @@ namespace HowToFishTrainer.Runtime
                     return;
                 }
             SelectedSpawnState = -2;
+        }
+
+        internal void SelectSpawnByCatalogIndex(int index, bool externallyConfirmed = false)
+        {
+            EnsureCatalog();
+            if (index < 0 || index >= _catalog.Count) { SelectedSpawnState = -2; return; }
+            SelectEntry(_catalog[index]);
+            if (externallyConfirmed && _selectedSpawn != null && _selectedSpawn.Safety != RuntimeSpawnSafety.Blocked)
+            {
+                _selectionConfirmed = true;
+                _selectionConfirmedAt = Time.unscaledTime;
+                SelectedSpawnState = 1;
+            }
         }
 
         private void SelectEntry(SpawnCatalogEntry entry)
@@ -733,7 +789,7 @@ namespace HowToFishTrainer.Runtime
             {
                 _windowRect.width = Mathf.Clamp(Screen.width * 0.55f, 560f, 900f); _windowRect.height = Mathf.Clamp(Screen.height * 0.72f, 440f, 760f);
                 _windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width)); _windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - _windowRect.height));
-                _windowRect = GUI.Window(0x485446, _windowRect, DrawWindow, "How to Fish Trainer v0.3.0rc2");
+                _windowRect = GUI.Window(0x485446, _windowRect, DrawWindow, "How to Fish Trainer v0.3.0rc2.post1");
             }
         }
 

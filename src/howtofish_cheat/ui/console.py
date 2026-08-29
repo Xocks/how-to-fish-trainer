@@ -9,7 +9,7 @@ from rich.layout import Layout
 from ..features import CheatFeature, SpawnableItem, get_default_features
 from .selector import ItemSelectorState
 from ..i18n import tr
-from ..models import SpawnSafety
+from ..models import SpawnCatalogSource, SpawnSafety
 from ..compatibility import CompatibilityReport
 
 
@@ -160,7 +160,15 @@ class TrainerUI:
         for row_start in range(0, len(visible_items), column_count):
             cells = []
             for item in visible_items[row_start : row_start + column_count]:
-                item_name = Text(item.display_name)
+                item_name = Text()
+                if item.source != SpawnCatalogSource.GAME:
+                    source_label = {
+                        SpawnCatalogSource.NAMED: "隐藏" if language == "zh" else "NAMED",
+                        SpawnCatalogSource.RESOURCE: "资源" if language == "zh" else "RESOURCE",
+                        SpawnCatalogSource.ENGINE: "引擎" if language == "zh" else "ENGINE",
+                    }[item.source]
+                    item_name.append(f"[{source_label}] ", style="bold magenta")
+                item_name.append(item.display_name)
                 if item.safety == SpawnSafety.BLOCKED:
                     item_name.stylize("dim red")
                     item_name.append(" ×", style="bold red")

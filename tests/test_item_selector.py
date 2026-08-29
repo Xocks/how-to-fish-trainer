@@ -45,6 +45,16 @@ def test_selector_selects_normal_item_and_rejects_invalid_id():
     assert state.message_kwargs == {"item_id": 99}
 
 
+def test_selector_accepts_four_digit_managed_catalog_ids():
+    item = SpawnableItem(1086, "Hidden Rod", "hiddenrod", ItemCategory.FISHING)
+    state = ItemSelectorState()
+
+    result = _type_id(state, 1086, [item])
+
+    assert result.action == SelectorAction.SELECTED
+    assert result.item == item
+
+
 def test_selector_requires_second_confirmation_for_quest_item():
     items = _catalog()
     by_id = {item.id: item for item in items}

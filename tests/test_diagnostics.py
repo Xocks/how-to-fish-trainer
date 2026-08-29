@@ -31,3 +31,18 @@ def test_collect_bundle_contains_manifest_and_latest_log(tmp_path):
         manifest = json.loads(bundle.read("manifest.json"))
         assert manifest["included_log"] == session.path.name
         assert "No saves" in manifest["privacy"]
+
+
+def test_collect_bundle_prefers_packaged_runtime_log_over_newer_test_log(tmp_path):
+    packaged = tmp_path / "dist" / "logs" / "spawn-runtime.jsonl"
+    packaged.parent.mkdir(parents=True)
+    packaged.write_text('{"event":"actual_runtime"}\n', encoding="utf-8")
+    session = DiagnosticSession(root=tmp_path)
+    session.record("newer_test_only_log")
+
+    bundle_path = collect_diagnostics(root=tmp_path)
+    with zipfile.ZipFile(bundle_path) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+        assert manifest["included_log"] == packaged.name
+        assert manifest["included_log_source"] == "dist\\logs\\spawn-runtime.jsonl"
+        assert bundle.read(f"logs/{packaged.name}") == packaged.read_bytes()

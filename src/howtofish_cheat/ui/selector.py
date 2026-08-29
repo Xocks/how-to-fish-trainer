@@ -83,7 +83,7 @@ class ItemSelectorState:
             self.message_kwargs = {}
             return SelectorResult(SelectorAction.CONTINUE)
         if len(key) == 1 and key.isdigit():
-            if len(self.input_buffer) < 3:
+            if len(self.input_buffer) < 5:
                 self.input_buffer += key
                 self.message_key = ""
                 self.message_kwargs = {}

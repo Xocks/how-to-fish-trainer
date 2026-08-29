@@ -10,7 +10,7 @@ from howtofish_cheat.features.spawner import (
     ItemSpawnerCheat,
     SpawnableItem,
 )
-from howtofish_cheat.models import SpawnSafety
+from howtofish_cheat.models import SpawnCatalogSource, SpawnSafety
 from howtofish_cheat.trainer import HowToFishTrainer
 
 
@@ -162,6 +162,59 @@ def test_managed_selection_is_mirrored_and_f8_prefers_main_thread_request():
     assert cheat.spawn_selected() is True
     spawn_requester.assert_called_once_with()
     assert cheat.last_action_key == "spawner_managed_queued"
+
+
+def test_managed_hidden_and_engine_catalog_entries_follow_official_items():
+    catalog_writer = MagicMock(return_value=True)
+    cheat = _catalog_cheat()
+    cheat.managed_catalog_selection_writer = catalog_writer
+    cheat.managed_catalog_reader = MagicMock(
+        return_value=[
+            {
+                "index": 0,
+                "native_id": 10,
+                "display_name": "鳕鱼",
+                "spawn_key": "codfish",
+                "source": 0,
+                "category": 3,
+                "safety": 0,
+                "safety_reason": "",
+            },
+            {
+                "index": 86,
+                "native_id": 90,
+                "display_name": "Hidden Rod",
+                "spawn_key": "hiddenrod",
+                "source": 1,
+                "category": 1,
+                "safety": 0,
+                "safety_reason": "",
+            },
+            {
+                "index": 120,
+                "native_id": -1,
+                "display_name": "Engine Crate",
+                "spawn_key": "Engine Crate",
+                "source": 3,
+                "category": 6,
+                "safety": 2,
+                "safety_reason": "local only",
+            },
+        ]
+    )
+
+    catalog = cheat.load_catalog()
+
+    assert [item.source for item in catalog] == [
+        SpawnCatalogSource.GAME,
+        SpawnCatalogSource.GAME,
+        SpawnCatalogSource.NAMED,
+        SpawnCatalogSource.ENGINE,
+    ]
+    assert [item.id for item in catalog[-2:]] == [1086, 1120]
+    assert catalog[-1].safety == SpawnSafety.HIGH_RISK_LOCAL
+    assert cheat.select_item(1086) == catalog[-2]
+    catalog_writer.assert_called_once_with(86)
 
 
 def test_joined_client_request_uses_safe_allowlist_and_two_second_cooldown():

@@ -83,6 +83,13 @@ class TestTrainerUIDashboard(unittest.TestCase):
         self.assertEqual(HowToFishTrainer._selector_grid_size(55, 20), (2, 20))
         self.assertEqual(HowToFishTrainer._selector_grid_size(20, 10), (1, 2))
 
+    @patch("howtofish_cheat.trainer.msvcrt")
+    def test_f10_is_read_explicitly_inside_selector(self, mock_msvcrt):
+        mock_msvcrt.kbhit.return_value = True
+        mock_msvcrt.getwch.side_effect = ["\x00", "D"]
+
+        self.assertEqual(HowToFishTrainer._read_selector_key(), "F10")
+
 
 if __name__ == "__main__":
     unittest.main()

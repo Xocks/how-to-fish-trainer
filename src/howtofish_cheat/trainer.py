@@ -166,12 +166,26 @@ class HowToFishTrainer:
                 return True
             self._setup_features()
             self._setup_feature_hotkeys()
-            self.status_message = tr("attached_ready", self.language)
+            if self.runtime_controller and self.runtime_controller.initialized:
+                self.status_message = tr("attached_ready", self.language)
+            else:
+                self.status_message = tr(
+                    "attached_runtime_waiting",
+                    self.language,
+                    reason=(
+                        self.runtime_controller.last_error
+                        if self.runtime_controller
+                        else "runtime controller unavailable"
+                    ),
+                )
             self.diagnostics.record(
                 "attached",
                 process_name=self.process_name,
                 pid=self.pm.process_id,
                 mono_domain=self.mono.root_domain,
+                managed_runtime=bool(
+                    self.runtime_controller and self.runtime_controller.initialized
+                ),
             )
             return True
         except pymem.exception.ProcessNotFound:
@@ -217,6 +231,10 @@ class HowToFishTrainer:
         item_spawner.managed_selection_writer = (
             runtime_controller.set_selected_spawn_id
         )
+        item_spawner.managed_catalog_selection_writer = (
+            runtime_controller.set_selected_catalog_index
+        )
+        item_spawner.managed_catalog_reader = runtime_controller.get_catalog_entries
         item_spawner.managed_spawn_requester = (
             runtime_controller.request_selected_spawn
         )
@@ -234,6 +252,16 @@ class HowToFishTrainer:
         damage_cheat.prepare()
         money_cheat.prepare()
         item_spawner.prepare()
+        runtime_ready = runtime_controller.initialize()
+        if not runtime_ready:
+            error = runtime_controller.last_error or "initialization deferred"
+            for feature in (aim_cheat, esp_cheat, mouse_panel):
+                feature.last_action_message = f"Managed runtime unavailable: {error}"
+            self.diagnostics.record(
+                "managed_runtime_gate", ready=False, error=error
+            )
+        else:
+            self.diagnostics.record("managed_runtime_gate", ready=True)
         self.runtime_controller = runtime_controller
 
         self.features = [
@@ -307,7 +335,11 @@ class HowToFishTrainer:
         char = msvcrt.getwch()
         if char in {"\x00", "\xe0"}:
             extended = msvcrt.getwch()
-            return {"I": "PAGEUP", "Q": "PAGEDOWN"}.get(extended)
+            return {
+                "I": "PAGEUP",
+                "Q": "PAGEDOWN",
+                "D": "F10",
+            }.get(extended)
         return {
             "\r": "ENTER",
             "\x08": "BACKSPACE",
@@ -365,6 +397,9 @@ class HowToFishTrainer:
                 if key is None:
                     time.sleep(0.03)
                     continue
+                if key == "F10":
+                    self.stop()
+                    break
 
                 result = state.handle_key(key, by_id)
                 if result.action == SelectorAction.SELECTED and result.item:

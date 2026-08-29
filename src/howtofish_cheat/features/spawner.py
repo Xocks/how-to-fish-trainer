@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from .base import CheatFeature
 from ..i18n import tr
-from ..models import ClientCapabilityState, SpawnSafety
+from ..models import ClientCapabilityState, SpawnCatalogSource, SpawnSafety
 from ..mono.main_thread import MAIN_THREAD_PATCH_LOCK
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,10 @@ class ItemCategory(IntEnum):
     ITEM = 0
     FISH = 1
     WEAPON = 2
+    FISHING = 3
+    QUEST = 4
+    EXPLOSIVE = 5
+    ENGINE = 6
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,9 @@ class SpawnableItem:
     is_quest_item: bool = False
     safety: SpawnSafety = SpawnSafety.SAFE
     safety_reason: str = ""
+    source: SpawnCatalogSource = SpawnCatalogSource.GAME
+    managed_index: int = -1
+    native_id: int = -1
 
     @property
     def requires_confirmation(self) -> bool:
@@ -58,6 +65,7 @@ class SpawnableItem:
         data = asdict(self)
         data["category"] = self.category.name.lower()
         data["safety"] = self.safety.value
+        data["source"] = self.source.value
         return data
 
 
@@ -105,6 +113,8 @@ class ItemSpawnerCheat(CheatFeature):
         client_state_reader: Optional[Callable[[], int]] = None,
         client_state_resetter: Optional[Callable[[], None]] = None,
         managed_selection_writer: Optional[Callable[[int], bool]] = None,
+        managed_catalog_selection_writer: Optional[Callable[[int], bool]] = None,
+        managed_catalog_reader: Optional[Callable[[], list[dict]]] = None,
         managed_spawn_requester: Optional[Callable[[], bool]] = None,
         managed_spawn_state_reader: Optional[Callable[[], int]] = None,
     ):
@@ -147,8 +157,11 @@ class ItemSpawnerCheat(CheatFeature):
         self.client_state_reader = client_state_reader
         self.client_state_resetter = client_state_resetter
         self.managed_selection_writer = managed_selection_writer
+        self.managed_catalog_selection_writer = managed_catalog_selection_writer
+        self.managed_catalog_reader = managed_catalog_reader
         self.managed_spawn_requester = managed_spawn_requester
         self.managed_spawn_state_reader = managed_spawn_state_reader
+        self._managed_catalog_merged = False
         self.client_capability = ClientCapabilityState.DISABLED
         self._client_request_pending = False
 
@@ -247,6 +260,8 @@ class ItemSpawnerCheat(CheatFeature):
     def load_catalog(self, force: bool = False) -> List[SpawnableItem]:
         """Scans the game's byte-ID spawn registry and returns safe metadata."""
         if self.catalog and not force:
+            if self.managed_catalog_reader and not self._managed_catalog_merged:
+                self._merge_managed_catalog()
             return list(self.catalog)
         if not self.pm or not self.mono or not self.get_spawnable_native:
             if not self.prepare():
@@ -318,13 +333,10 @@ class ItemSpawnerCheat(CheatFeature):
                 failures += 1
                 logger.debug("Failed to inspect spawnable item ID %d", item_id, exc_info=True)
 
-        order = {
-            ItemCategory.ITEM: 0,
-            ItemCategory.FISH: 1,
-            ItemCategory.WEAPON: 2,
-            ItemCategory.UNKNOWN: 3,
-        }
-        self.catalog = sorted(discovered, key=lambda item: (order[item.category], item.id))
+        self._managed_catalog_merged = False
+        self.catalog = discovered
+        self._merge_managed_catalog()
+        self._sort_catalog()
         if self.selected_item and self.selected_item.id not in self.catalog_by_id:
             self.selected_item = None
         self._set_action(
@@ -346,6 +358,103 @@ class ItemSpawnerCheat(CheatFeature):
             items=[item.to_dict() for item in self.catalog],
         )
         return list(self.catalog)
+
+    @staticmethod
+    def _category_order(category: ItemCategory) -> int:
+        return {
+            ItemCategory.ITEM: 0,
+            ItemCategory.FISHING: 1,
+            ItemCategory.FISH: 2,
+            ItemCategory.WEAPON: 3,
+            ItemCategory.QUEST: 4,
+            ItemCategory.EXPLOSIVE: 5,
+            ItemCategory.ENGINE: 6,
+            ItemCategory.UNKNOWN: 7,
+        }[category]
+
+    def _sort_catalog(self) -> None:
+        source_order = {
+            SpawnCatalogSource.GAME: 0,
+            SpawnCatalogSource.NAMED: 1,
+            SpawnCatalogSource.RESOURCE: 2,
+            SpawnCatalogSource.ENGINE: 3,
+        }
+        self.catalog.sort(
+            key=lambda item: (
+                source_order[item.source],
+                self._category_order(item.category),
+                item.id,
+                item.display_name.casefold(),
+            )
+        )
+
+    def _merge_managed_catalog(self) -> None:
+        if not self.managed_catalog_reader or self._managed_catalog_merged:
+            return
+        try:
+            exported = self.managed_catalog_reader()
+        except Exception as exc:
+            self._record("managed_catalog_merge_failed", error=str(exc))
+            return
+        if not exported:
+            self._record("managed_catalog_merge_deferred", reason="empty_export")
+            return
+        source_map = {
+            0: SpawnCatalogSource.GAME,
+            1: SpawnCatalogSource.NAMED,
+            2: SpawnCatalogSource.RESOURCE,
+            3: SpawnCatalogSource.ENGINE,
+        }
+        category_map = {
+            0: ItemCategory.ITEM,
+            1: ItemCategory.FISHING,
+            2: ItemCategory.WEAPON,
+            3: ItemCategory.FISH,
+            4: ItemCategory.QUEST,
+            5: ItemCategory.EXPLOSIVE,
+            6: ItemCategory.ENGINE,
+        }
+        safety_map = {
+            0: SpawnSafety.SAFE,
+            1: SpawnSafety.CONFIRM_REQUIRED,
+            2: SpawnSafety.HIGH_RISK_LOCAL,
+            3: SpawnSafety.BLOCKED,
+        }
+        extras = []
+        for raw in exported:
+            source = source_map.get(int(raw.get("source", -1)))
+            if source is None or source == SpawnCatalogSource.GAME:
+                continue
+            index = int(raw["index"])
+            category = category_map.get(
+                int(raw.get("category", -1)), ItemCategory.UNKNOWN
+            )
+            safety = safety_map.get(
+                int(raw.get("safety", -1)), SpawnSafety.BLOCKED
+            )
+            extras.append(
+                SpawnableItem(
+                    id=1000 + index,
+                    display_name=str(raw.get("display_name") or "<unnamed>"),
+                    spawn_key=str(raw.get("spawn_key") or ""),
+                    category=category,
+                    is_quest_item=category == ItemCategory.QUEST,
+                    safety=safety,
+                    safety_reason=str(raw.get("safety_reason") or ""),
+                    source=source,
+                    managed_index=index,
+                    native_id=int(raw.get("native_id", -1)),
+                )
+            )
+        self.catalog.extend(extras)
+        self._managed_catalog_merged = True
+        self._sort_catalog()
+        self._record(
+            "managed_catalog_merged",
+            exported=len(exported),
+            added=len(extras),
+            total=len(self.catalog),
+        )
 
     @classmethod
     def _classify_item(
@@ -402,7 +511,15 @@ class ItemSpawnerCheat(CheatFeature):
             return None
         if item:
             self.selected_item = item
-            if self.managed_selection_writer:
+            if item.managed_index >= 0 and self.managed_catalog_selection_writer:
+                try:
+                    self.managed_catalog_selection_writer(item.managed_index)
+                except Exception:
+                    logger.debug(
+                        "Failed to mirror catalog selection into managed UI",
+                        exc_info=True,
+                    )
+            elif self.managed_selection_writer:
                 try:
                     self.managed_selection_writer(item.id)
                 except Exception:

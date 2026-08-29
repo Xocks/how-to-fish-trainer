@@ -100,14 +100,23 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
     """Creates a sanitized support bundle entirely below ``test-artifacts``."""
     root = (root or project_root()).resolve()
     logs_dir = _inside_root(root, root / "logs")
+    packaged_logs_dir = _inside_root(root, root / "dist" / "logs")
     output_dir = _inside_root(root, root / "test-artifacts")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    log_files = sorted(
+    packaged_log_files = sorted(
+        packaged_logs_dir.glob("spawn-*.jsonl")
+        if packaged_logs_dir.exists()
+        else [],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    checkout_log_files = sorted(
         logs_dir.glob("spawn-*.jsonl") if logs_dir.exists() else [],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
+    log_files = packaged_log_files or checkout_log_files
     latest_log = log_files[0] if log_files else None
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     bundle_path = _inside_root(
@@ -120,7 +129,7 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
         / "HowToFishTrainer.Runtime"
         / "bin"
         / "Release"
-        / "HowToFishTrainer.Runtime.dll"
+        / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
     )
     runtime_sha256 = None
     if runtime_dll.is_file():
@@ -139,6 +148,9 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
         "git_branch": _git_value(root, "branch", "--show-current"),
         "git_status": _git_value(root, "status", "--short"),
         "included_log": latest_log.name if latest_log else None,
+        "included_log_source": (
+            str(latest_log.relative_to(root)) if latest_log else None
+        ),
         "runtime_helper_sha256": runtime_sha256,
         "privacy": "No saves, complete Unity logs, chat, or credentials are included.",
     }

@@ -19,7 +19,7 @@ OUTPUT = (
     / "HowToFishTrainer.Runtime"
     / "bin"
     / "Release"
-    / "HowToFishTrainer.Runtime.dll"
+    / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
 )
 
 

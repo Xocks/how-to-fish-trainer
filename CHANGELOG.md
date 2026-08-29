@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0rc2.post1 - 2026-08-29
+
+- Give the managed helper a release-unique assembly identity so a still-running game cannot silently reuse the older RC1 contract.
+- Initialize and validate the managed runtime during attachment, report its exact failure once, and stop repeated hotkey error flooding.
+- Export the managed hidden/resource/engine catalog and merge it into F7 with synthetic IDs after the official game registry.
+- Make F10 exit explicit inside the synchronous F7 selector and accept the larger synthetic catalog IDs.
+- Prefer the packaged trainer's real `dist/logs` session when collecting diagnostics from the checkout.
+
 ## 0.3.0rc2 - 2026-08-29
 
 - Change F9 to a 360-degree, world-distance fish-first selector with optional

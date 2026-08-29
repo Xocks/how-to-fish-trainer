@@ -20,21 +20,21 @@ logger = logging.getLogger(__name__)
 def runtime_assembly_path() -> Path:
     if getattr(sys, "frozen", False):
         bundled = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-        return bundled / "runtime" / "HowToFishTrainer.Runtime.dll"
+        return bundled / "runtime" / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
     return (
         project_root()
         / "runtime"
         / "HowToFishTrainer.Runtime"
         / "bin"
         / "Release"
-        / "HowToFishTrainer.Runtime.dll"
+        / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
     )
 
 
 class ManagedRuntimeController:
     """Loads and controls the reversible in-memory Unity helper."""
 
-    ASSEMBLY_NAME = "HowToFishTrainer.Runtime"
+    ASSEMBLY_NAME = "HowToFishTrainer.Runtime.RC2Hotfix1"
     NAMESPACE = "HowToFishTrainer.Runtime"
 
     def __init__(
@@ -50,6 +50,8 @@ class ManagedRuntimeController:
         self.event_sink = event_sink
         self.prepared = False
         self.initialized = False
+        self._prepare_attempted = False
+        self.last_error = ""
         self.methods: dict[str, int] = {}
         self.dispatcher: Optional[MainThreadDispatcher] = None
         self._status_lock = threading.Lock()
@@ -68,6 +70,9 @@ class ManagedRuntimeController:
     def prepare(self) -> bool:
         if self.prepared:
             return True
+        if self._prepare_attempted:
+            return False
+        self._prepare_attempted = True
         helper_path = runtime_assembly_path()
         try:
             self.mono.load_assembly(str(helper_path), self.ASSEMBLY_NAME)
@@ -89,11 +94,13 @@ class ManagedRuntimeController:
                 "GetStatusWord": 0,
                 "GetPrivateLobbyConsent": 0,
                 "SetSelectedSpawnId": 1,
+                "SetSelectedCatalogIndex": 1,
                 "RequestSelectedSpawn": 0,
                 "GetSelectedSpawnId": 0,
                 "GetSelectedSpawnMode": 0,
                 "GetSelectedSpawnState": 0,
                 "GetCatalogCount": 0,
+                "GetCatalogEntry": 1,
                 "RequestClientItem": 1,
                 "GetClientSpawnState": 0,
                 "ResetClientSpawnState": 0,
@@ -111,6 +118,7 @@ class ManagedRuntimeController:
                 self.pm, self.mono, self.patcher, late_update
             )
             self.prepared = True
+            self.last_error = ""
             self._record(
                 "managed_runtime_prepared",
                 helper_path=str(helper_path),
@@ -118,6 +126,7 @@ class ManagedRuntimeController:
             )
             return True
         except Exception as exc:
+            self.last_error = str(exc)
             logger.error("Managed runtime preparation failed: %s", exc)
             self._record("managed_runtime_failed", stage="prepare", error=str(exc))
             return False
@@ -133,6 +142,7 @@ class ManagedRuntimeController:
             self._record("managed_runtime_initialized")
             return True
         except Exception as exc:
+            self.last_error = str(exc)
             logger.error("Managed runtime initialization failed: %s", exc)
             self._record("managed_runtime_failed", stage="initialize", error=str(exc))
             return False
@@ -145,6 +155,7 @@ class ManagedRuntimeController:
             self._record("managed_runtime_state", method=method, value=bool(value))
             return True
         except Exception as exc:
+            self.last_error = str(exc)
             self._record("managed_runtime_failed", stage=method, error=str(exc))
             return False
 
@@ -234,9 +245,35 @@ class ManagedRuntimeController:
             )
             return accepted
         except Exception as exc:
+            self.last_error = str(exc)
             self._record(
                 "managed_runtime_failed",
                 stage="SetSelectedSpawnId",
+                error=str(exc),
+            )
+            return False
+
+    def set_selected_catalog_index(self, catalog_index: int) -> bool:
+        """Selects one immutable managed catalog entry on Unity's main thread."""
+        if not self.initialize() or int(catalog_index) < 0:
+            return False
+        try:
+            accepted = bool(
+                self.mono.executor.call(
+                    self.methods["SetSelectedCatalogIndex"], int(catalog_index)
+                )
+            )
+            self._record(
+                "managed_catalog_selection",
+                catalog_index=int(catalog_index),
+                accepted=accepted,
+            )
+            return accepted
+        except Exception as exc:
+            self.last_error = str(exc)
+            self._record(
+                "managed_runtime_failed",
+                stage="SetSelectedCatalogIndex",
                 error=str(exc),
             )
             return False
@@ -269,6 +306,47 @@ class ManagedRuntimeController:
 
     def get_catalog_count(self) -> int:
         return self.get_int("GetCatalogCount")
+
+    def get_catalog_entries(self, timeout: float = 1.5) -> list[dict]:
+        """Reads the immutable catalog snapshot built by Unity's main thread."""
+        if not self.initialize():
+            return []
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        count = self.get_catalog_count()
+        while count <= 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+            count = self.get_catalog_count()
+        entries: list[dict] = []
+        for index in range(max(0, count)):
+            try:
+                value_ptr = self.mono.executor.call(
+                    self.methods["GetCatalogEntry"], index
+                )
+                encoded = self.mono.read_string(value_ptr)
+                fields = encoded.split("\t")
+                if len(fields) != 8:
+                    continue
+                entries.append(
+                    {
+                        "index": int(fields[0]),
+                        "native_id": int(fields[1]),
+                        "display_name": fields[2],
+                        "spawn_key": fields[3],
+                        "source": int(fields[4]),
+                        "category": int(fields[5]),
+                        "safety": int(fields[6]),
+                        "safety_reason": fields[7],
+                    }
+                )
+            except Exception as exc:
+                self.last_error = str(exc)
+                self._record(
+                    "managed_catalog_entry_failed", index=index, error=str(exc)
+                )
+        self._record(
+            "managed_catalog_exported", count=len(entries), runtime_count=count
+        )
+        return entries
 
     def get_client_spawn_state(self) -> int:
         return self.get_int("GetClientSpawnState")
@@ -304,6 +382,8 @@ class RuntimeToggleFeature(CheatFeature):
             self.is_enabled = True
             return True
         self.last_action_message = "Managed runtime is unavailable."
+        if self.controller.last_error:
+            self.last_action_message += f" {self.controller.last_error}"
         return False
 
     def disable(self) -> bool:

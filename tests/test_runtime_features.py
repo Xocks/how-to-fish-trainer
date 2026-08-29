@@ -47,7 +47,7 @@ def test_main_thread_stub_calls_function_and_waits_for_release():
 
 @patch("howtofish_cheat.features.runtime.runtime_assembly_path")
 def test_runtime_controller_loads_helper_and_exposes_toggles(mock_path, tmp_path):
-    helper = tmp_path / "HowToFishTrainer.Runtime.dll"
+    helper = tmp_path / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
     helper.write_bytes(b"managed")
     mock_path.return_value = helper
     mono = MagicMock()
@@ -59,12 +59,14 @@ def test_runtime_controller_loads_helper_and_exposes_toggles(mock_path, tmp_path
 
     assert controller.prepare() is True
     mono.load_assembly.assert_called_once_with(
-        str(helper), "HowToFishTrainer.Runtime"
+        str(helper), "HowToFishTrainer.Runtime.RC2Hotfix1"
     )
     assert "Initialize" in controller.methods
     assert "RequestClientItem" in controller.methods
     assert "RequestSelectedSpawn" in controller.methods
     assert "SetSelectedSpawnId" in controller.methods
+    assert "SetSelectedCatalogIndex" in controller.methods
+    assert "GetCatalogEntry" in controller.methods
 
 
 def test_runtime_feature_hotkeys_and_status_are_stable():
@@ -82,3 +84,40 @@ def test_runtime_feature_hotkeys_and_status_are_stable():
     assert [aim.hotkey, esp.hotkey, panel.hotkey] == ["F9", "F11", "Insert"]
     assert aim.enable() is True
     assert "PLAYER" in aim.get_status_badge("en")
+
+
+def test_runtime_prepare_failure_is_reported_only_once():
+    mono = MagicMock()
+    mono.load_assembly.side_effect = RuntimeError("old helper contract")
+    controller = ManagedRuntimeController(MagicMock(), mono, MagicMock())
+
+    assert controller.prepare() is False
+    assert controller.prepare() is False
+    assert controller.last_error == "old helper contract"
+    assert mono.load_assembly.call_count == 1
+
+
+def test_runtime_catalog_export_decodes_immutable_rows():
+    mono = MagicMock()
+    controller = ManagedRuntimeController(MagicMock(), mono, MagicMock())
+    controller.initialized = True
+    controller.methods = {"GetCatalogCount": 10, "GetCatalogEntry": 11}
+
+    def call(method, *args):
+        if method == 10:
+            return 2
+        if method == 11:
+            return 0x1000 + args[0]
+        raise AssertionError((method, args))
+
+    mono.executor.call.side_effect = call
+    mono.read_string.side_effect = {
+        0x1000: "0\t54\tRifle\tassaultrifle\t0\t2\t0\t",
+        0x1001: "1\t-1\tEngine Crate\tEngine Crate\t3\t6\t2\tlocal only",
+    }.__getitem__
+
+    entries = controller.get_catalog_entries(timeout=0)
+
+    assert entries[0]["native_id"] == 54
+    assert entries[1]["source"] == 3
+    assert entries[1]["safety_reason"] == "local only"
