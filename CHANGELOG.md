@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0rc2 - 2026-08-29
+
+- Change F9 to a 360-degree, world-distance fish-first selector with optional
+  all-creature and through-wall modes.
+- Compensate both `PlayerCamera` recoil and the weapon recoil rig, then align
+  the fire point without changing damage or network projectile messages.
+- Refresh ESP projection at up to 60 Hz, stagger occlusion checks, and expose a
+  10-36 point font slider.
+- Make Insert capture the game's look and mouse fire actions so interacting
+  with the panel does not rotate the camera or fire the weapon.
+- Add the mouse-driven Spawn tab with official, named, resource `Item`, and
+  explicitly local-only engine-object tiers.
+- Stop marking every fish as dangerous. Only real quest items and explosives
+  require confirmation; `deadplayer` and network actors remain hard blocked.
+- Queue all mouse/F7 selections and F8 requests for Unity-main-thread handling,
+  and destroy high-risk local clones on scene change or shutdown.
+
 ## 0.3.0rc1 - 2026-08-29
 
 ### Added

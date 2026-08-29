@@ -16,7 +16,7 @@ A comprehensive technical breakdown of reverse engineering, memory architecture,
 
 The Python controller remains an external process. It validates the exact game assembly before patching, loads `HowToFishTrainer.Runtime.dll` into the existing Mono domain from the trainer directory, and dispatches Unity initialization from a one-shot `Player.LateUpdate` gate. No DLL is copied into the game installation. Aim target enumeration, `Camera.WorldToScreenPoint`, physics obstruction checks, and IMGUI rendering run only on Unity's main thread; remote worker threads only update primitive control flags.
 
-The helper provides F9 ADS/right-mouse head aim for creatures and consented private-lobby players, F11 item/creature labels, and an Insert mouse panel. Shutdown clears all feature flags and destroys the helper `GameObject`; Mono retains the loaded assembly until the game process ends because the root domain cannot unload an individual assembly.
+The helper provides world-distance 360-degree fish-first aim, camera and fire-point recoil compensation, 60 Hz ESP projection, and an Insert panel with an integrated spawn catalog. The panel disables the game's look and mouse-fire actions while open and restores their exact prior states. Shutdown clears all feature flags, destroys local high-risk clones, and destroys the helper `GameObject`; Mono retains the loaded assembly until the process ends because the root domain cannot unload an individual assembly.
 
 ---
 

@@ -13,7 +13,7 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 
 - **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
 - **Current branch:** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
-- **Current code version:** `0.3.0rc1` (the RC tag waits for live validation)
+- **Current code version:** `0.3.0rc2` (the RC tag waits for live validation)
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
@@ -32,9 +32,10 @@ Compared with the upstream baseline, this branch adds:
 | **Special-item safeguards** | Quest and unknown items receive a red `!` marker and require a second confirmation. |
 | **Character hard block** | ID 53, `deadplayer`, and prefabs carrying `DeadPlayer` are marked with `×` and cannot reach the native spawn call. |
 | **Compatibility gate** | Verifies the assembly hash, Mono method/field contracts, and native JIT entries; unknown builds run in diagnostics-only mode. |
-| **F9 head aim** | While holding a gun, ADS plus right mouse targets creature heads. Other players require explicit private-lobby consent. |
-| **F11 item/creature labels** | Displays categorized names and distances, dims obstructed objects, and caps the default view at 200 labels / 150 metres. |
-| **Insert mouse panel** | Opens Combat, ESP, Experiment, and Diagnostics tabs with mouse-controlled sliders and toggles. |
+| **F9 360° head aim** | ADS plus right mouse selects the nearest fish by world distance, including off-screen targets, with optional all-creature, occlusion, and recoil controls. |
+| **F11 item/creature labels** | Projects labels at up to 60 Hz, staggers occlusion checks, and exposes a 10-36 font-size slider. |
+| **Insert mouse panel** | Adds a Spawn tab and captures look/fire actions while the mouse is interacting with the panel. |
+| **Layered spawn catalog** | Orders official IDs, named/skin entries, resource Items, then explicitly local-only engine objects; ordinary fish are no longer mislabeled as dangerous. |
 | **Joined-client experiment** | Uses the game's existing `Server.BuyItem` RPC only for safe items/weapons after private-lobby consent, with one request at a time, a two-second cooldown, and fail-closed synchronization. |
 | **Crash fixes** | Dispatches spawning on Unity's main thread, uses a two-way restoration handshake, and retains pinned Mono command strings for the current game process to avoid the identified cleanup-timing crashes. |
 | **Responsive selector UI** | Uses four `ID / Item` pairs on wide terminals, automatically reduces columns on narrow windows, uses available height for larger pages, and redraws cleanly after resizing. |
@@ -56,9 +57,9 @@ This remains an external process-memory trainer. It does not replace game files 
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
 | **F7** | **Select Spawn Item** | Opens a responsive `ID / Item` grid: wide windows use four pairs and taller windows show more rows, while narrow windows reduce the column count automatically. A red `!` marks confirmation-required items. |
 | **F8** | **Spawn Selected Item** | Solo/host spawns in front; a consented private-lobby client may request one safe item directly into its hand. |
-| **F9** | **Head Aim** | While ADS, hold right mouse to track an unobstructed creature/player head. |
-| **F11** | **Item / Creature ESP** | Toggles categorized name and distance labels. |
-| **Insert** | **Mouse Panel** | Opens or closes the mouse-driven settings and diagnostics panel. |
+| **F9** | **360° Head Aim** | Locks the nearest fish by world distance and compensates camera/fire-point recoil. |
+| **F11** | **Item / Creature ESP** | Toggles categorized 60 Hz name and distance labels. |
+| **Insert** | **Mouse Panel** | Opens Combat, ESP, Spawn, Experiment, and Diagnostics without moving the game camera. |
 | **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
 | **F10** | **Safe Exit** | Restores all modified code/memory and exits the trainer safely. |
 
@@ -77,8 +78,8 @@ This remains an external process-memory trainer. It does not replace game files 
    - **Unlimited Ammo (`F4`)**: JIT-patches `Weapon.set_Ammo` with `RET` (`0xC3`) and actively locks magazine capacity to `999` while resetting reload flags.
    - **Damage Multiplier (`F5`)**: Pure real-time in-memory scaling across `PlayerPunching._damage`, `Melee._sharpnessUpgrades` array, `Attachments._bulletUpgrades` array, and `WeaponInfo.ProjectileDamage` (1x, 2x, 5x, 10x, One-Shot Kill).
    - **Add Money (`F6`)**: Directly updates authoritative static `<Money>k__BackingField` and FishNet `SyncVar<int> _money`, invokes `PlayerUI.SetMoney` for floating `+$10000` text + HUD animated roll, and calls `MoneyManager.MoneySound` for audio feedback.
-   - **Item Spawner (`F7` / `F8`)**: Classifies every prefab with `SpawnSafety` before the existing one-shot main-thread dispatch. Joined clients use only the private-lobby safe RPC probe and never spoof `IsServerInitialized`.
-   - **Aim / ESP (`F9` / `F11`)**: The external controller loads a repository-built helper into the existing Mono domain. Unity object enumeration, projection, aim rotation, and IMGUI drawing stay on Unity's main thread; no helper DLL is copied into the game installation.
+   - **Item Spawner (`F7` / `F8`)**: The managed main thread merges official IDs, the name registry, `Resources/Items`, and prefab-like engine objects. Hotkeys only queue requests; joined clients never spoof `IsServerInitialized`.
+   - **Aim / ESP (`F9` / `F11`)**: The external controller loads a repository-built helper into the existing Mono domain. 360-degree selection, two-layer recoil handling, object enumeration, 60 Hz projection, and IMGUI drawing remain on Unity's main thread.
    - Disabling any cheat or exiting cleanly restores original machine code bytes and base values.
 3. **Interactive Console UI (`howtofish_cheat.ui.console`)**:
    - Live status display with connection status, active PID, Mono domain pointer, and real-time cheat states.

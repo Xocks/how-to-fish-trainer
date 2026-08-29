@@ -46,4 +46,3 @@ def test_catalog_contract_separates_safe_fish_from_high_risk_engine_objects():
     assert "else if (item.IsQuestItem)" in source
     assert "MaxRawClones = 20" in source
     assert "DestroyRawClones();" in source
-
