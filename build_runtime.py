@@ -19,7 +19,7 @@ OUTPUT = (
     / "HowToFishTrainer.Runtime"
     / "bin"
     / "Release"
-    / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
+    / "HowToFishTrainer.Runtime.V030.dll"
 )
 
 
@@ -54,9 +54,11 @@ def build_runtime(managed_dir: Path = DEFAULT_MANAGED) -> Path:
         "FishNet.Runtime.dll",
         "UnityEngine.CoreModule.dll",
         "UnityEngine.IMGUIModule.dll",
+        "UnityEngine.UIModule.dll",
         "UnityEngine.InputLegacyModule.dll",
         "Unity.InputSystem.dll",
         "UnityEngine.PhysicsModule.dll",
+        "Unity.RenderPipelines.Core.Runtime.dll",
         "UnityEngine.TextRenderingModule.dll",
     ]
     missing = [name for name in references if not (managed_dir / name).is_file()]

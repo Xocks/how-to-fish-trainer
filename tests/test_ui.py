@@ -8,6 +8,7 @@ from rich.console import Group
 from howtofish_cheat.ui.console import TrainerUI
 from howtofish_cheat.features import get_default_features
 from howtofish_cheat.trainer import HowToFishTrainer
+from howtofish_cheat.compatibility import CompatibilityReport
 
 
 class TestTrainerUIDashboard(unittest.TestCase):
@@ -65,6 +66,22 @@ class TestTrainerUIDashboard(unittest.TestCase):
         self.assertEqual(len(tables), 1)
         table = tables[0]
         self.assertEqual(len(table.rows), 7)
+
+    def test_dashboard_distinguishes_a_blocked_process_from_searching(self):
+        panel = self.ui.generate_dashboard(
+            is_attached=False,
+            process_detected=True,
+            process_name="How to Fish.exe",
+            pid=1234,
+            mono_domain=0,
+            features=[],
+            status_message="blocked",
+            language="zh",
+            compatibility=CompatibilityReport(False, errors=("test_gate",)),
+        )
+        rendered = str(panel.renderable.renderables[1])
+        self.assertIn("已找到但被阻止", rendered)
+        self.assertNotIn("正在搜索", rendered)
 
     @patch("howtofish_cheat.trainer.keyboard")
     def test_trainer_features_populated_before_attachment(self, mock_keyboard):

@@ -14,6 +14,8 @@ from .runtime import (
     EspOverlayCheat,
     ManagedRuntimeController,
     MousePanelFeature,
+    SilentAimFeature,
+    ThirdPersonFeature,
 )
 
 
@@ -45,6 +47,8 @@ __all__ = [
     "AimAssistCheat",
     "EspOverlayCheat",
     "MousePanelFeature",
+    "ThirdPersonFeature",
+    "SilentAimFeature",
     "get_default_features",
 ]
 

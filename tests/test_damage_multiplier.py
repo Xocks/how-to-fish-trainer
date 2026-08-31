@@ -248,7 +248,7 @@ class TestDamageMultiplier(unittest.TestCase):
         self.mock_mono.executor.call.return_value = 0x22222
 
         trainer._setup_features()
-        self.assertEqual(len(trainer.features), 10)
+        self.assertEqual(len(trainer.features), 12)
         feature_names = [f.name for f in trainer.features]
         self.assertIn("Damage Multiplier", feature_names)
         self.assertIn("Add Money (+1w)", feature_names)

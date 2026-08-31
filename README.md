@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-An external Python-based trainer and cheat engine for the Unity Mono game **[How to Fish (渔力全开)](https://store.steampowered.com/)**.
+An external trainer for the Unity Mono game **[How to Fish (渔力全开)](https://store.steampowered.com/)**. It installs no mod and replaces no game file, while providing a runtime item catalog, native-presentation third person, aim assistance, silent-aim experiments, item/creature ESP, and reversible diagnostics.
 
 > [!IMPORTANT]
 > This is a **community fork maintained by Xocks**, developed from commit
@@ -13,11 +13,11 @@ An external Python-based trainer and cheat engine for the Unity Mono game **[How
 
 - **Modified repository:** [Xocks/how-to-fish-trainer](https://github.com/Xocks/how-to-fish-trainer)
 - **Current branch:** [`main`](https://github.com/Xocks/how-to-fish-trainer/tree/main)
-- **Current code version:** `0.3.0rc2.post1` (the RC tag waits for live validation)
+- **Current release:** `0.3.0`
 
 Powered by `pymem`, JIT function hooking via Mono runtime interop, and an interactive `rich` TUI dashboard.
 
-> **v0.3.0 RC:** The compatibility gate, hard block for character spawning, head aim, item/creature labels, and private-lobby client request path have automated coverage and a successfully compiled helper DLL. This is not yet evidence of live in-game success.
+> **v0.3.0:** Core code, compatibility gates, reversible cleanup, runtime catalog, aim/ESP, and the native third-person presentation chain have automated coverage and final DLL/EXE builds. Silent ballistics, network poses, player targeting, and joined-client capabilities remain private-room experiments whose server acceptance requires two-client testing.
 
 ---
 
@@ -32,16 +32,20 @@ Compared with the upstream baseline, this branch adds:
 | **Special-item safeguards** | Quest and unknown items receive a red `!` marker and require a second confirmation. |
 | **Character hard block** | ID 53, `deadplayer`, and prefabs carrying `DeadPlayer` are marked with `×` and cannot reach the native spawn call. |
 | **Compatibility gate** | Verifies the assembly hash, Mono method/field contracts, and native JIT entries; unknown builds run in diagnostics-only mode. |
-| **F9 360° head aim** | ADS plus right mouse selects the nearest fish by world distance, including off-screen targets, with optional all-creature, occlusion, and recoil controls. |
+| **F9 360° head aim** | ADS plus right mouse selects the nearest enabled target by world distance. Fish and birds are enabled by default; other creatures are optional, while players are off by default and require per-session private-room consent. |
+| **Home third person** | Keeps the verified `CurCam` shoulder camera, rebuilds the owner-hidden render hierarchy from a loaded player prefab, and temporarily rebinds the retained native `PlayerLegs`, `PlayerHands`, `PlayerBody`, and `IK` presentation chain to it. v0.3.0 uses real local movement, held item, camera, breathing, ground and boat state; it contains no hand-written gait and restores every rebound reference on exit. It copies no player/network/collision/rigidbody behavior. Local rendering is not proof of another client's rendering or hitbox changes. |
+| **End silent aim (experimental)** | Pre-locks without right mouse and leaves the camera under player control. Each new local projectile receives one initial correction; tracking mode then steers with a rate limit and stops at obstruction. Network acceptance remains unverified. |
+| **Private-room pose experiment** | Offers mutually exclusive low/backwards and high-speed body-spin modes. Pitch/yaw are substituted only during the game's existing pose send window, then the local view is restored. Remote animation and hitbox behavior are not yet verified and are not advertised as anti-headshot. |
 | **F11 item/creature labels** | Projects labels at up to 60 Hz, staggers occlusion checks, and exposes a 10-36 font-size slider. |
 | **Insert mouse panel** | Adds a Spawn tab and captures look/fire actions while the mouse is interacting with the panel. |
-| **Layered spawn catalog** | Orders official IDs, named/skin entries, resource Items, then explicitly local-only engine objects; ordinary fish are no longer mislabeled as dangerous. |
+| **Layered spawn catalog** | Separates official pickups, hidden `Item` prefabs, safe static visual previews, and diagnostic-only Unity resources. Engine resources are no longer all described as spawnable items. |
+| **Single F8 dispatch** | F8 triggers on key release and deduplicates requests for 400ms, preventing held keys from repeatedly creating objects or flooding diagnostics. |
 | **Joined-client experiment** | Uses the game's existing `Server.BuyItem` RPC only for safe items/weapons after private-lobby consent, with one request at a time, a two-second cooldown, and fail-closed synchronization. |
 | **Crash fixes** | Dispatches spawning on Unity's main thread, uses a two-way restoration handshake, and retains pinned Mono command strings for the current game process to avoid the identified cleanup-timing crashes. |
 | **Responsive selector UI** | Uses four `ID / Item` pairs on wide terminals, automatically reduces columns on narrow windows, uses available height for larger pages, and redraws cleanly after resizing. |
 | **Diagnostics and tests** | Adds sanitized support bundles, a one-shot `spawn_probe`, and automated coverage for catalog scanning, selector input, authority checks, cooldowns, reconnects, and main-thread restoration. |
 
-This remains an external process-memory trainer. It does not replace game files and is not installed as a mod. Treat the item spawner as an RC feature and test it with a disposable save in single-player or as the host.
+This remains an external process-memory trainer. It does not replace game files and is not installed as a mod. Item spawning creates game objects, so test it with a disposable save in single-player or as the host.
 
 ---
 
@@ -57,7 +61,9 @@ This remains an external process-memory trainer. It does not replace game files 
 | **F6** | **Add Money (+1w)** | Adds **+$10,000 (1w)** money with sound effect, UI animation, and multiplayer synchronization on keypress. |
 | **F7** | **Select Spawn Item** | Official entries keep their native IDs; named/resource/engine entries use synthetic IDs above 1000. A red `!` marks confirmation-required items and `×` marks hard blocks. |
 | **F8** | **Spawn Selected Item** | Solo/host spawns in front; a consented private-lobby client may request one safe item directly into its hand. |
-| **F9** | **360° Head Aim** | Locks the nearest fish by world distance and compensates camera/fire-point recoil. |
+| **F9** | **360° Head Aim** | Locks the nearest enabled fish/bird/creature; the optional player category is shared with End and requires private-room consent. |
+| **Home** | **Third Person** | Toggles the collision-shortened shoulder camera and render-only local avatar mirror; detailed state is shown in Insert Diagnostics. |
+| **End** | **Silent Aim (Experimental)** | Keeps the view free while correcting the original firing path; joined clients require private-room consent. |
 | **F11** | **Item / Creature ESP** | Toggles categorized 60 Hz name and distance labels. |
 | **Insert** | **Mouse Panel** | Opens Combat, ESP, Spawn, Experiment, and Diagnostics without moving the game camera. |
 | **F12** | **Switch Language** | Toggles trainer interface language between **Chinese (中文)** and **English (EN)**. |
@@ -115,6 +121,8 @@ uv run pytest -v
 - Press **F7** to open the item catalog, enter an ID, and confirm the selection.
 - Press **F8** to spawn one selected item in single-player or while hosting.
 - Press **F9** to toggle head aim; hold right mouse while ADS.
+- Press **Home** to toggle the third-person shoulder camera.
+- Press **End** to toggle experimental silent aim; choose initial correction or projectile tracking in Insert.
 - Press **F11** to toggle item / creature labels.
 - Press **Insert** to open or close the mouse panel.
 - Press **F12** to **Switch Language (中文 / EN)** at any time.
@@ -122,7 +130,7 @@ uv run pytest -v
 
 ### 3. Item Spawner Validation and Diagnostics
 
-Use a new disposable save for initial testing. Verify one fish and one firearm in single-player first, then test host synchronization with a second client. Quest or unknown items are visible but require a second confirmation because they may affect progression or saves.
+Use a new disposable save for initial testing. Verify one fish and one firearm in single-player first, then test host synchronization with a second client. A visual-preview entry copies only static Mesh/Sprite data, cannot be picked up, and never synchronizes; diagnostic-only resources cannot be spawned.
 
 Steam Build `24911270` exposes 85 entries in the game's native spawn dictionary (IDs `0–85`, with ID `30` empty). Use **PageUp / PageDown** to view every page; fish and weapons are classified separately.
 

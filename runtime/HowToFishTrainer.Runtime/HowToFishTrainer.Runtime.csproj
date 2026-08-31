@@ -4,7 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <AssemblyName>HowToFishTrainer.Runtime.RC2Hotfix1</AssemblyName>
+    <AssemblyName>HowToFishTrainer.Runtime.V030</AssemblyName>
     <RootNamespace>HowToFishTrainer.Runtime</RootNamespace>
     <GameManagedDir Condition="'$(GameManagedDir)' == ''">D:\SteamLibrary\steamapps\common\How to Fish\How to Fish\How to Fish_Data\Managed</GameManagedDir>
   </PropertyGroup>
@@ -22,6 +22,10 @@
       <HintPath>$(GameManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(GameManagedDir)\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">
       <HintPath>$(GameManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
@@ -32,6 +36,10 @@
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>$(GameManagedDir)\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.Runtime">
+      <HintPath>$(GameManagedDir)\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">

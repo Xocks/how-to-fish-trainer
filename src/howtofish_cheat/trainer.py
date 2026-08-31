@@ -32,6 +32,8 @@ from .features import (
     AimAssistCheat,
     EspOverlayCheat,
     MousePanelFeature,
+    SilentAimFeature,
+    ThirdPersonFeature,
     get_default_features,
 )
 from .compatibility import (
@@ -244,6 +246,8 @@ class HowToFishTrainer:
         aim_cheat = AimAssistCheat(runtime_controller, hotkey="F9")
         esp_cheat = EspOverlayCheat(runtime_controller, hotkey="F11")
         mouse_panel = MousePanelFeature(runtime_controller, hotkey="Insert")
+        third_person = ThirdPersonFeature(runtime_controller, hotkey="Home")
+        silent_aim = SilentAimFeature(runtime_controller, hotkey="End")
 
         health_cheat.prepare()
         hunger_cheat.prepare()
@@ -255,7 +259,7 @@ class HowToFishTrainer:
         runtime_ready = runtime_controller.initialize()
         if not runtime_ready:
             error = runtime_controller.last_error or "initialization deferred"
-            for feature in (aim_cheat, esp_cheat, mouse_panel):
+            for feature in (aim_cheat, esp_cheat, mouse_panel, third_person, silent_aim):
                 feature.last_action_message = f"Managed runtime unavailable: {error}"
             self.diagnostics.record(
                 "managed_runtime_gate", ready=False, error=error
@@ -275,6 +279,8 @@ class HowToFishTrainer:
             aim_cheat,
             esp_cheat,
             mouse_panel,
+            third_person,
+            silent_aim,
         ]
 
     def _setup_feature_hotkeys(self) -> None:
@@ -289,16 +295,43 @@ class HowToFishTrainer:
                         suppress=False,
                     )
                     self._feature_hotkey_hooks.append(selector_hook)
+                    self.diagnostics.record(
+                        "hotkey_registered", hotkey=feature.select_hotkey, mode="hotkey"
+                    )
                 except Exception as e:
                     logger.debug("Failed to register F7 item selector hotkey: %s", e)
+                    self.diagnostics.record(
+                        "hotkey_registration_failed",
+                        hotkey=feature.select_hotkey,
+                        error=str(e),
+                    )
 
             def make_handler(f):
                 return lambda: self._on_hotkey_pressed(f)
             try:
-                hook = keyboard.add_hotkey(feature.hotkey, make_handler(feature), suppress=False)
+                if isinstance(feature, ItemSpawnerCheat):
+                    hook = keyboard.on_release_key(
+                        feature.hotkey,
+                        lambda _event, f=feature: self._on_hotkey_pressed(f),
+                        suppress=False,
+                    )
+                    mode = "release_key"
+                else:
+                    hook = keyboard.add_hotkey(
+                        feature.hotkey, make_handler(feature), suppress=False
+                    )
+                    mode = "hotkey"
                 self._feature_hotkey_hooks.append(hook)
+                self.diagnostics.record(
+                    "hotkey_registered", hotkey=feature.hotkey, mode=mode
+                )
             except Exception as e:
                 logger.debug(f"Failed to register hotkey {feature.hotkey}: {e}")
+                self.diagnostics.record(
+                    "hotkey_registration_failed",
+                    hotkey=feature.hotkey,
+                    error=str(e),
+                )
 
     def _remove_feature_hotkeys(self) -> None:
         """Unregisters all active feature hotkey hooks."""
@@ -306,7 +339,10 @@ class HowToFishTrainer:
             try:
                 keyboard.remove_hotkey(hook)
             except Exception:
-                pass
+                try:
+                    keyboard.unhook(hook)
+                except Exception:
+                    pass
         self._feature_hotkey_hooks.clear()
 
     def _get_item_spawner(self) -> Optional[ItemSpawnerCheat]:
@@ -435,9 +471,19 @@ class HowToFishTrainer:
 
     def _on_hotkey_pressed(self, feature: CheatFeature) -> None:
         """Handles hotkey trigger and toggles feature."""
+        self.diagnostics.record(
+            "hotkey_received",
+            hotkey=feature.hotkey,
+            feature=feature.name,
+            selector_active=self._selector_active,
+            attached=bool(self.pm and self.mono),
+        )
         if not self.pm or not self.mono:
             return
         if self._selector_active and isinstance(feature, ItemSpawnerCheat):
+            self.diagnostics.record(
+                "hotkey_ignored", hotkey=feature.hotkey, reason="selector_active"
+            )
             return
         feature.toggle()
         fname = feature.get_name(self.language) if hasattr(feature, "get_name") else feature.name
@@ -572,6 +618,7 @@ class HowToFishTrainer:
                         status_message=self.status_message,
                         language=self.language,
                         compatibility=self.compatibility_report,
+                        process_detected=self.pm is not None,
                     )
                     live.update(dashboard)
                     time.sleep(0.25)

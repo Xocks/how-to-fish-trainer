@@ -47,3 +47,20 @@ def test_native_entry_validation_rejects_breakpoints_and_zero_addresses():
         validate_native_entry(pm, 0x100000)
     with pytest.raises(RuntimeError, match="Invalid native"):
         validate_native_entry(pm, 0)
+
+
+def test_post8_runtime_contract_gates_native_avatar_ik_skin_bird_and_pose_members():
+    assert ("Assembly-CSharp", "PlayerBody", "_newCharacter") in CompatibilityGate.REQUIRED_FIELDS
+    assert ("Assembly-CSharp", "PlayerBody", "_oldCharacter") in CompatibilityGate.REQUIRED_FIELDS
+    assert ("Assembly-CSharp", "Player", "_playerSkin") in CompatibilityGate.REQUIRED_FIELDS
+    assert ("Assembly-CSharp", "PlayerSkin", "_bodyRenderer") in CompatibilityGate.REQUIRED_FIELDS
+    assert ("Assembly-CSharp", "PlayerSkin", "InitializeOther", 0) in CompatibilityGate.REQUIRED_METHODS
+    assert ("Assembly-CSharp", "IK", "_chainLength") in CompatibilityGate.REQUIRED_FIELDS
+    # The prior gate looked for the wrong zero-parameter signature. The game's
+    # native IK path is ResolveIK(bool), and post8 fails closed on that contract.
+    assert ("Assembly-CSharp", "IK", "ResolveIK", 1) in CompatibilityGate.REQUIRED_METHODS
+    assert ("Assembly-CSharp", "PlayerBody", "SetAndApplyPosRots", 0) in CompatibilityGate.REQUIRED_METHODS
+    assert ("Assembly-CSharp", "PlayerHands", "LateUpdate", 0) in CompatibilityGate.REQUIRED_METHODS
+    assert ("Assembly-CSharp", "PlayerLegs", "Update", 0) in CompatibilityGate.REQUIRED_METHODS
+    assert ("Assembly-CSharp", "BirdManager", "_flyingBirds") in CompatibilityGate.REQUIRED_FIELDS
+    assert ("Assembly-CSharp", "Player", "SendPosRot", 0) in CompatibilityGate.REQUIRED_METHODS

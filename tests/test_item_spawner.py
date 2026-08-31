@@ -10,7 +10,11 @@ from howtofish_cheat.features.spawner import (
     ItemSpawnerCheat,
     SpawnableItem,
 )
-from howtofish_cheat.models import SpawnCatalogSource, SpawnSafety
+from howtofish_cheat.models import (
+    EngineObjectCapability,
+    SpawnCatalogSource,
+    SpawnSafety,
+)
 from howtofish_cheat.trainer import HowToFishTrainer
 
 
@@ -199,6 +203,8 @@ def test_managed_hidden_and_engine_catalog_entries_follow_official_items():
                 "category": 6,
                 "safety": 2,
                 "safety_reason": "local only",
+                "engine_capability": 1,
+                "renderer_count": 3,
             },
         ]
     )
@@ -213,6 +219,8 @@ def test_managed_hidden_and_engine_catalog_entries_follow_official_items():
     ]
     assert [item.id for item in catalog[-2:]] == [1086, 1120]
     assert catalog[-1].safety == SpawnSafety.HIGH_RISK_LOCAL
+    assert catalog[-1].engine_capability == EngineObjectCapability.VISUAL_PREVIEW
+    assert catalog[-1].renderer_count == 3
     assert cheat.select_item(1086) == catalog[-2]
     catalog_writer.assert_called_once_with(86)
 
@@ -378,4 +386,6 @@ def test_trainer_registers_f7_selector_and_f8_spawn(mock_keyboard):
     trainer._setup_feature_hotkeys()
 
     registered = [call.args[0] for call in mock_keyboard.add_hotkey.call_args_list]
-    assert registered[-2:] == ["F7", "F8"]
+    assert registered[-1] == "F7"
+    mock_keyboard.on_release_key.assert_called_once()
+    assert mock_keyboard.on_release_key.call_args.args[0] == "F8"

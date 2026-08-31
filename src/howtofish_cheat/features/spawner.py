@@ -12,7 +12,12 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from .base import CheatFeature
 from ..i18n import tr
-from ..models import ClientCapabilityState, SpawnCatalogSource, SpawnSafety
+from ..models import (
+    ClientCapabilityState,
+    EngineObjectCapability,
+    SpawnCatalogSource,
+    SpawnSafety,
+)
 from ..mono.main_thread import MAIN_THREAD_PATCH_LOCK
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,8 @@ class SpawnableItem:
     source: SpawnCatalogSource = SpawnCatalogSource.GAME
     managed_index: int = -1
     native_id: int = -1
+    engine_capability: EngineObjectCapability = EngineObjectCapability.NOT_ENGINE
+    renderer_count: int = 0
 
     @property
     def requires_confirmation(self) -> bool:
@@ -66,6 +73,7 @@ class SpawnableItem:
         data["category"] = self.category.name.lower()
         data["safety"] = self.safety.value
         data["source"] = self.source.value
+        data["engine_capability"] = self.engine_capability.value
         return data
 
 
@@ -73,6 +81,7 @@ class ItemSpawnerCheat(CheatFeature):
     """Enumerates and spawns native Item prefabs for a local server/host."""
 
     SELECT_HOTKEY = "F7"
+    SPAWN_HOTKEY_DEBOUNCE_SECONDS = 0.4
     SPAWN_COOLDOWN_SECONDS = 0.5
     CLIENT_SPAWN_COOLDOWN_SECONDS = 2.0
     MAIN_THREAD_TIMEOUT_SECONDS = 4.0
@@ -139,6 +148,7 @@ class ItemSpawnerCheat(CheatFeature):
         self._wait_clock = wait_clock
         self._sleeper = sleeper
         self._last_spawn_at = float("-inf")
+        self._last_spawn_request_at = float("-inf")
         self._last_client_spawn_at = float("-inf")
         self._spawn_lock = threading.Lock()
         self._pinned_spawn_strings: Dict[str, Tuple[int, int]] = {}
@@ -420,6 +430,11 @@ class ItemSpawnerCheat(CheatFeature):
             2: SpawnSafety.HIGH_RISK_LOCAL,
             3: SpawnSafety.BLOCKED,
         }
+        capability_map = {
+            0: EngineObjectCapability.NOT_ENGINE,
+            1: EngineObjectCapability.VISUAL_PREVIEW,
+            2: EngineObjectCapability.DIAGNOSTIC_ONLY,
+        }
         extras = []
         for raw in exported:
             source = source_map.get(int(raw.get("source", -1)))
@@ -444,6 +459,11 @@ class ItemSpawnerCheat(CheatFeature):
                     source=source,
                     managed_index=index,
                     native_id=int(raw.get("native_id", -1)),
+                    engine_capability=capability_map.get(
+                        int(raw.get("engine_capability", 0)),
+                        EngineObjectCapability.DIAGNOSTIC_ONLY,
+                    ),
+                    renderer_count=max(0, int(raw.get("renderer_count", 0))),
                 )
             )
         self.catalog.extend(extras)
@@ -706,23 +726,6 @@ class ItemSpawnerCheat(CheatFeature):
 
     def _spawn_selected_locked(self) -> bool:
         """Implements one serialized spawn request."""
-        if self.managed_spawn_requester:
-            try:
-                if self.managed_spawn_requester():
-                    state = (
-                        int(self.managed_spawn_state_reader())
-                        if self.managed_spawn_state_reader
-                        else 3
-                    )
-                    self._set_action(
-                        "spawner_managed_queued",
-                        "Managed spawn request queued on Unity's main thread.",
-                        state=state,
-                    )
-                    self._record("managed_spawn_queued", state=state)
-                    return True
-            except Exception:
-                logger.debug("Managed spawn request failed", exc_info=True)
         item = self.selected_item
         if not item:
             self._set_action(
@@ -740,6 +743,46 @@ class ItemSpawnerCheat(CheatFeature):
             )
             self._record("spawn_rejected", reason="blocked", item=item.to_dict())
             return False
+
+        now = self._clock()
+        if now - self._last_spawn_request_at < self.SPAWN_HOTKEY_DEBOUNCE_SECONDS:
+            self._set_action(
+                "spawner_cooldown",
+                "Spawn cooldown: duplicate F8 event ignored; release the key.",
+            )
+            return False
+        self._last_spawn_request_at = now
+
+        if self.managed_spawn_requester:
+            try:
+                if self.managed_spawn_requester():
+                    state = (
+                        int(self.managed_spawn_state_reader())
+                        if self.managed_spawn_state_reader
+                        else 3
+                    )
+                    self._set_action(
+                        "spawner_managed_queued",
+                        "Managed spawn request queued on Unity's main thread.",
+                        state=state,
+                    )
+                    self._record("managed_spawn_queued", state=state)
+                    return True
+                if item.managed_index >= 0:
+                    self._set_action(
+                        "spawner_cooldown",
+                        "Managed spawn request is pending or was debounced.",
+                    )
+                    return False
+            except Exception:
+                logger.debug("Managed spawn request failed", exc_info=True)
+                if item.managed_index >= 0:
+                    self._set_action(
+                        "spawner_spawn_failed",
+                        "Managed spawn request failed closed.",
+                        error="managed_request_failed",
+                    )
+                    return False
         if not self.pm or not self.mono or not self.use_spawn_command_native:
             self._set_action(
                 "spawner_not_attached", "Item spawner is not attached to the game."
@@ -747,12 +790,10 @@ class ItemSpawnerCheat(CheatFeature):
             self._record("spawn_rejected", reason="not_attached", item=item.to_dict())
             return False
 
-        now = self._clock()
         if now - self._last_spawn_at < self.SPAWN_COOLDOWN_SECONDS:
             self._set_action(
                 "spawner_cooldown", "Spawn cooldown active; please wait."
             )
-            self._record("spawn_rejected", reason="cooldown", item=item.to_dict())
             return False
 
         try:

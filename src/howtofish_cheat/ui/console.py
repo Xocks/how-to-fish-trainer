@@ -29,6 +29,7 @@ class TrainerUI:
         status_message: str = "Ready",
         language: str = "zh",
         compatibility: Optional[CompatibilityReport] = None,
+        process_detected: bool = False,
     ) -> Panel:
         """Constructs the complete trainer dashboard renderable."""
         # Top Header & Info
@@ -45,6 +46,15 @@ class TrainerUI:
                     process_name=process_name,
                     pid=pid,
                     mono_domain=mono_domain,
+                )
+            )
+        elif process_detected:
+            conn_info = Text.from_markup(
+                tr(
+                    "blocked_process_info",
+                    language,
+                    process_name=process_name,
+                    pid=pid,
                 )
             )
         else:

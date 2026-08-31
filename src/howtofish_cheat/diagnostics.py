@@ -129,7 +129,7 @@ def collect_diagnostics(root: Optional[Path] = None) -> Path:
         / "HowToFishTrainer.Runtime"
         / "bin"
         / "Release"
-        / "HowToFishTrainer.Runtime.RC2Hotfix1.dll"
+        / "HowToFishTrainer.Runtime.V030.dll"
     )
     runtime_sha256 = None
     if runtime_dll.is_file():
